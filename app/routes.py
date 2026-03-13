@@ -13,10 +13,15 @@ def index():
 @bp.route("/api/mistakes", methods=["GET"])
 def get_mistakes():
     """Get all mistakes with optional filters."""
-    topic = request.args.get("topic")
+    category = request.args.get("category")
+    if not category:
+        category = request.args.get("topic")
+    subtopic = request.args.get("subtopic")
     mistake_type = request.args.get("mistake_type")
 
-    mistakes = models.get_all_mistakes(topic=topic, mistake_type=mistake_type)
+    mistakes = models.get_all_mistakes(
+        category=category, subtopic=subtopic, mistake_type=mistake_type
+    )
     return jsonify(mistakes)
 
 
@@ -61,10 +66,27 @@ def delete_mistake(mistake_id):
     return jsonify({"error": "Mistake not found"}), 404
 
 
+@bp.route("/api/categories", methods=["GET"])
+def get_categories():
+    """Get all unique categories."""
+    categories = models.get_all_categories()
+    return jsonify(categories)
+
+
+@bp.route("/api/subtopics", methods=["GET"])
+def get_subtopics():
+    """Get all unique subtopics, optionally filtered by category."""
+    category = request.args.get("category")
+    if not category:
+        category = request.args.get("topic")
+    subtopics = models.get_all_subtopics(category=category)
+    return jsonify(subtopics)
+
+
 @bp.route("/api/topics", methods=["GET"])
 def get_topics():
-    """Get all unique topics."""
-    topics = models.get_all_topics()
+    """Backward-compatible alias for categories."""
+    topics = models.get_all_categories()
     return jsonify(topics)
 
 

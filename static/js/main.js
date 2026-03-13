@@ -2,17 +2,22 @@
 
 // State
 let mistakes = [];
-let topics = [];
-let currentFilters = { topic: '', mistake_type: '' };
+let categories = [];
+let subtopics = [];
+let currentFilters = { category: '', subtopic: '', mistake_type: '' };
 let deleteTargetId = null;
 let typeChart = null;
-let topicChart = null;
+let categoryChart = null;
+let didHydrateLastEntryFromMistakes = false;
+
+const LAST_ENTRY_DETAILS_KEY = 'mistakeTracker.lastEntryDetails';
 
 // DOM Elements
 const mistakesTable = document.getElementById('mistakes-tbody');
 const noDataMessage = document.getElementById('no-data');
 const mistakeCount = document.getElementById('mistake-count');
-const filterTopic = document.getElementById('filter-topic');
+const filterCategory = document.getElementById('filter-category');
+const filterSubtopic = document.getElementById('filter-subtopic');
 const filterType = document.getElementById('filter-type');
 const clearFiltersBtn = document.getElementById('clear-filters');
 const toggleAnalyticsBtn = document.getElementById('toggle-analytics');
@@ -57,27 +62,163 @@ const editSolutionPasteHint = editSolutionPasteZone.querySelector('.paste-hint')
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     loadMistakes();
-    loadTopics();
+    loadCategories();
+    loadSubtopics();
     setupEventListeners();
     setupClipboardPaste();
     setupTabs();
+    applySavedEntryDetails();
 });
 
 // API Functions
 async function loadMistakes() {
     const params = new URLSearchParams();
-    if (currentFilters.topic) params.append('topic', currentFilters.topic);
+    if (currentFilters.category) params.append('category', currentFilters.category);
+    if (currentFilters.subtopic) params.append('subtopic', currentFilters.subtopic);
     if (currentFilters.mistake_type) params.append('mistake_type', currentFilters.mistake_type);
     
     const response = await fetch(`/api/mistakes?${params}`);
     mistakes = await response.json();
+    hydrateLastEntryDetailsFromMistakes();
     renderTable();
 }
 
-async function loadTopics() {
-    const response = await fetch('/api/topics');
-    topics = await response.json();
-    renderTopicFilter();
+function getSavedEntryDetails() {
+    try {
+        const raw = localStorage.getItem(LAST_ENTRY_DETAILS_KEY);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw);
+        return {
+            category: (parsed.category || '').trim(),
+            subtopics: (parsed.subtopics || parsed.subtopic || '').trim()
+        };
+    } catch {
+        return null;
+    }
+}
+
+function saveEntryDetails(category, subtopics) {
+    try {
+        const payload = {
+            category: (category || '').trim(),
+            subtopics: (subtopics || '').trim()
+        };
+        localStorage.setItem(LAST_ENTRY_DETAILS_KEY, JSON.stringify(payload));
+    } catch {
+        // Ignore storage failures (private mode, quota, disabled storage).
+    }
+}
+
+function applySavedEntryDetails() {
+    const saved = getSavedEntryDetails();
+    if (!saved) return;
+
+    const categoryInput = document.getElementById('new-category');
+    const subtopicsInput = document.getElementById('new-subtopics');
+
+    if (categoryInput && !categoryInput.value && saved.category) {
+        categoryInput.value = saved.category;
+    }
+    if (subtopicsInput && !subtopicsInput.value && saved.subtopics) {
+        subtopicsInput.value = saved.subtopics;
+    }
+
+    if (saved.category) {
+        loadSubtopicsForAddForm(saved.category);
+    }
+}
+
+function hydrateLastEntryDetailsFromMistakes() {
+    if (didHydrateLastEntryFromMistakes) return;
+
+    const saved = getSavedEntryDetails();
+    if (saved && saved.category) {
+        didHydrateLastEntryFromMistakes = true;
+        return;
+    }
+
+    const latest = mistakes[0];
+    if (!latest) return;
+
+    const category = (latest.category || latest.topic || '').trim();
+    const subtopic = (latest.subtopics || []).join(', ') || (latest.subtopic || '').trim();
+    if (!category) return;
+
+    saveEntryDetails(category, subtopic);
+    applySavedEntryDetails();
+    didHydrateLastEntryFromMistakes = true;
+}
+
+async function loadCategories() {
+    const response = await fetch('/api/categories');
+    categories = await response.json();
+    renderCategoryFilter();
+    renderCategorySuggestions();
+}
+
+async function loadSubtopics(category = '') {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+
+    const response = await fetch(`/api/subtopics?${params}`);
+    subtopics = await response.json();
+    renderSubtopicFilter();
+}
+
+async function fetchSubtopicsByCategory(category = '') {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    const response = await fetch(`/api/subtopics?${params}`);
+    return response.json();
+}
+
+function renderSubtopicDropdown(selectId, items) {
+    const dropdown = document.getElementById(selectId);
+    if (!dropdown) return;
+
+    dropdown.innerHTML = '<option value="">Select subtopic to add</option>';
+    items.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item;
+        opt.textContent = item;
+        dropdown.appendChild(opt);
+    });
+}
+
+async function loadSubtopicsForAddForm(category = '') {
+    const items = await fetchSubtopicsByCategory(category);
+    renderSubtopicDropdown('new-subtopic-dropdown', items);
+}
+
+async function loadSubtopicsForEditForm(category = '') {
+    const items = await fetchSubtopicsByCategory(category);
+    renderSubtopicDropdown('edit-subtopic-dropdown', items);
+}
+
+function normalizeSubtopicsInput(value) {
+    const raw = String(value || '').split(',');
+    const normalized = [];
+    const seen = new Set();
+    raw.forEach(item => {
+        const subtopic = item.trim();
+        if (!subtopic) return;
+        const key = subtopic.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        normalized.push(subtopic);
+    });
+    return normalized;
+}
+
+function appendSubtopicToInput(inputId, subtopic) {
+    const input = document.getElementById(inputId);
+    if (!input || !subtopic) return;
+
+    const current = normalizeSubtopicsInput(input.value);
+    const exists = current.some(item => item.toLowerCase() === subtopic.toLowerCase());
+    if (!exists) current.push(subtopic);
+    input.value = current.join(', ');
 }
 
 async function loadAnalytics() {
@@ -127,14 +268,15 @@ function renderTable() {
     mistakes.forEach(m => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${formatDate(m.date_added)}</td>
-            <td>${escapeHtml(m.topic)}</td>
-            <td>${renderThumbnail(m.question_image, m.id, 'question')}</td>
-            <td>${renderThumbnail(m.solution_image, m.id, 'solution')}</td>
-            <td>${renderMistakeType(m.mistake_type)}</td>
-            <td>${escapeHtml(m.why_happened)}</td>
-            <td>${escapeHtml(m.how_to_avoid)}</td>
-            <td>
+            <td data-label="Date">${formatDate(m.date_added)}</td>
+            <td data-label="Category">${escapeHtml(m.category || m.topic || '')}</td>
+            <td data-label="Subtopic">${escapeHtml(m.subtopic || '')}</td>
+            <td data-label="Question">${renderThumbnail(m.question_image, m.id, 'question')}</td>
+            <td data-label="Solution">${renderThumbnail(m.solution_image, m.id, 'solution')}</td>
+            <td data-label="Type">${renderMistakeType(m.mistake_type)}</td>
+            <td data-label="Why It Happened">${escapeHtml(m.why_happened)}</td>
+            <td data-label="How to Avoid">${escapeHtml(m.how_to_avoid)}</td>
+            <td data-label="Actions">
                 <div class="action-btns">
                     <button class="btn-icon btn-edit" data-id="${m.id}" title="Edit">&#9998;</button>
                     <button class="btn-icon btn-delete" data-id="${m.id}" title="Delete">&#128465;</button>
@@ -158,14 +300,48 @@ function renderTable() {
     });
 }
 
-function renderTopicFilter() {
+function renderCategoryFilter() {
     // Keep first option
-    filterTopic.innerHTML = '<option value="">All Topics</option>';
-    topics.forEach(t => {
+    filterCategory.innerHTML = '<option value="">All Categories</option>';
+    categories.forEach(c => {
         const opt = document.createElement('option');
-        opt.value = t;
-        opt.textContent = t;
-        filterTopic.appendChild(opt);
+        opt.value = c;
+        opt.textContent = c;
+        filterCategory.appendChild(opt);
+    });
+
+    if (currentFilters.category) {
+        filterCategory.value = currentFilters.category;
+    }
+}
+
+function renderSubtopicFilter() {
+    filterSubtopic.innerHTML = '<option value="">All Subtopics</option>';
+    subtopics.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        filterSubtopic.appendChild(opt);
+    });
+
+    if (currentFilters.subtopic && subtopics.includes(currentFilters.subtopic)) {
+        filterSubtopic.value = currentFilters.subtopic;
+    } else {
+        filterSubtopic.value = '';
+    }
+}
+
+function renderCategorySuggestions() {
+    const datalists = ['category-options', 'edit-category-options'];
+    datalists.forEach(id => {
+        const list = document.getElementById(id);
+        if (!list) return;
+        list.innerHTML = '';
+        categories.forEach(c => {
+            const option = document.createElement('option');
+            option.value = c;
+            list.appendChild(option);
+        });
     });
 }
 
@@ -219,19 +395,19 @@ function renderAnalytics(data) {
         }
     });
     
-    // Topic distribution bar chart
-    const topicCtx = document.getElementById('topic-chart').getContext('2d');
-    const topicLabels = Object.keys(data.topic_distribution);
-    const topicValues = Object.values(data.topic_distribution);
-    
-    if (topicChart) topicChart.destroy();
-    topicChart = new Chart(topicCtx, {
+    // Category distribution bar chart
+    const categoryCtx = document.getElementById('category-chart').getContext('2d');
+    const categoryLabels = Object.keys(data.category_distribution || {});
+    const categoryValues = Object.values(data.category_distribution || {});
+
+    if (categoryChart) categoryChart.destroy();
+    categoryChart = new Chart(categoryCtx, {
         type: 'bar',
         data: {
-            labels: topicLabels,
+            labels: categoryLabels,
             datasets: [{
                 label: 'Mistakes',
-                data: topicValues,
+                data: categoryValues,
                 backgroundColor: '#2563eb',
                 borderRadius: 4
             }]
@@ -252,8 +428,35 @@ function renderAnalytics(data) {
 // Event Listeners
 function setupEventListeners() {
     // Filters
-    filterTopic.addEventListener('change', () => {
-        currentFilters.topic = filterTopic.value;
+    filterCategory.addEventListener('change', async () => {
+        currentFilters.category = filterCategory.value;
+        currentFilters.subtopic = '';
+        await loadSubtopics(currentFilters.category);
+        loadMistakes();
+    });
+
+    document.getElementById('new-category').addEventListener('change', async (e) => {
+        await loadSubtopicsForAddForm(e.target.value);
+    });
+
+    document.getElementById('edit-category').addEventListener('change', async (e) => {
+        await loadSubtopicsForEditForm(e.target.value);
+    });
+
+    document.getElementById('new-subtopic-dropdown').addEventListener('change', (e) => {
+        if (!e.target.value) return;
+        appendSubtopicToInput('new-subtopics', e.target.value);
+        e.target.value = '';
+    });
+
+    document.getElementById('edit-subtopic-dropdown').addEventListener('change', (e) => {
+        if (!e.target.value) return;
+        appendSubtopicToInput('edit-subtopics', e.target.value);
+        e.target.value = '';
+    });
+
+    filterSubtopic.addEventListener('change', () => {
+        currentFilters.subtopic = filterSubtopic.value;
         loadMistakes();
     });
     
@@ -261,11 +464,13 @@ function setupEventListeners() {
         currentFilters.mistake_type = filterType.value;
         loadMistakes();
     });
-    
+
     clearFiltersBtn.addEventListener('click', () => {
-        filterTopic.value = '';
+        filterCategory.value = '';
+        filterSubtopic.value = '';
         filterType.value = '';
-        currentFilters = { topic: '', mistake_type: '' };
+        currentFilters = { category: '', subtopic: '', mistake_type: '' };
+        loadSubtopics();
         loadMistakes();
     });
     
@@ -283,9 +488,14 @@ function setupEventListeners() {
     // Add form
     addForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+
+        const categoryValue = document.getElementById('new-category').value;
+        const subtopicValue = document.getElementById('new-subtopics').value;
+        const subtopicList = normalizeSubtopicsInput(subtopicValue);
         
         const data = {
-            topic: document.getElementById('new-topic').value,
+            category: categoryValue,
+            subtopics: subtopicList,
             mistake_type: document.getElementById('new-type').value,
             question_image: newImageInput.value,
             solution_image: newSolutionImageInput.value,
@@ -294,15 +504,18 @@ function setupEventListeners() {
         };
         
         await addMistake(data);
+        saveEntryDetails(categoryValue, subtopicValue);
         
         // Reset form
         addForm.reset();
         clearPastedImage();
         clearPastedSolutionImage();
+        applySavedEntryDetails();
         
         // Reload
         loadMistakes();
-        loadTopics();
+        loadCategories();
+        loadSubtopics(document.getElementById('new-category').value);
         if (!analyticsSection.classList.contains('hidden')) {
             loadAnalytics();
         }
@@ -317,7 +530,8 @@ function setupEventListeners() {
         
         const id = document.getElementById('edit-id').value;
         const data = {
-            topic: document.getElementById('edit-topic').value,
+            category: document.getElementById('edit-category').value,
+            subtopics: normalizeSubtopicsInput(document.getElementById('edit-subtopics').value),
             mistake_type: document.getElementById('edit-type').value,
             question_image: editImageInput.value,
             solution_image: editSolutionImageInput.value,
@@ -328,7 +542,8 @@ function setupEventListeners() {
         await updateMistake(id, data);
         closeEditModal();
         loadMistakes();
-        loadTopics();
+        loadCategories();
+        loadSubtopics();
         if (!analyticsSection.classList.contains('hidden')) {
             loadAnalytics();
         }
@@ -344,7 +559,8 @@ function setupEventListeners() {
             deleteTargetId = null;
             closeDeleteModal();
             loadMistakes();
-            loadTopics();
+            loadCategories();
+            loadSubtopics();
             if (!analyticsSection.classList.contains('hidden')) {
                 loadAnalytics();
             }
@@ -732,12 +948,14 @@ function clearEditPastedSolutionImage() {
 function openEditModal(id) {
     const mistake = mistakes.find(m => m.id === id);
     if (!mistake) return;
-    
+
     document.getElementById('edit-id').value = mistake.id;
-    document.getElementById('edit-topic').value = mistake.topic;
+    document.getElementById('edit-category').value = mistake.category || mistake.topic || '';
+    document.getElementById('edit-subtopics').value = (mistake.subtopics || []).join(', ') || mistake.subtopic || '';
     document.getElementById('edit-type').value = mistake.mistake_type;
     document.getElementById('edit-why').value = mistake.why_happened;
     document.getElementById('edit-avoid').value = mistake.how_to_avoid;
+    loadSubtopicsForEditForm(mistake.category || mistake.topic || '');
     
     // Handle question image
     if (mistake.question_image) {

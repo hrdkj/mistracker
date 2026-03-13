@@ -25,9 +25,15 @@
             <!-- Filters Section -->
             <section class="filters-section">
                 <div class="filter-group">
-                    <label for="filter-topic">Topic:</label>
-                    <select id="filter-topic">
-                        <option value="">All Topics</option>
+                    <label for="filter-category">Category:</label>
+                    <select id="filter-category">
+                        <option value="">All Categories</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="filter-subtopic">Subtopic:</label>
+                    <select id="filter-subtopic">
+                        <option value="">All Subtopics</option>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -61,8 +67,8 @@
                         <canvas id="type-chart"></canvas>
                     </div>
                     <div class="chart-wrapper">
-                        <h3>Mistakes by Topic</h3>
-                        <canvas id="topic-chart"></canvas>
+                        <h3>Mistakes by Category</h3>
+                        <canvas id="category-chart"></canvas>
                     </div>
                 </div>
             </section>
@@ -75,7 +81,8 @@
                         <thead>
                             <tr>
                                 <th>Date</th>
-                                <th>Topic</th>
+                                <th>Category</th>
+                                <th>Subtopic</th>
                                 <th>Question</th>
                                 <th>Solution</th>
                                 <th>Type</th>
@@ -120,14 +127,25 @@
                         </div>
                     </div>
 
-                    <!-- Step 2: Topic and Type -->
+                    <!-- Step 2: Category, subtopic, and type -->
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="new-topic">Step 2: Topic *</label>
-                            <input type="text" id="new-topic" placeholder="e.g., Calculus - Derivatives" required>
+                            <label for="new-category">Step 2: Category *</label>
+                            <input type="text" id="new-category" list="category-options" placeholder="e.g., Linear Algebra" required>
+                            <datalist id="category-options"></datalist>
                         </div>
                         <div class="form-group">
-                            <label for="new-type">Step 3: Mistake Type *</label>
+                            <label for="new-subtopics">Step 3: Subtopics (Optional)</label>
+                            <input type="text" id="new-subtopics" placeholder="e.g., Basis, Dimension, Rank">
+                        </div>
+                        <div class="form-group">
+                            <label for="new-subtopic-dropdown">Pick from existing subtopics</label>
+                            <select id="new-subtopic-dropdown">
+                                <option value="">Select subtopic to add</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="new-type">Step 4: Mistake Type *</label>
                             <select id="new-type" required>
                                 {% for mt in mistake_types %}
                                 <option value="{{ mt }}">{{ mt }}</option>
@@ -139,11 +157,11 @@
                     <!-- Step 3: Analysis -->
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="new-why">Step 4: Why did this mistake happen? *</label>
+                            <label for="new-why">Step 5: Why did this mistake happen? *</label>
                             <textarea id="new-why" placeholder="e.g., Didn't understand the chain rule..." required></textarea>
                         </div>
                         <div class="form-group">
-                            <label for="new-avoid">Step 5: How to avoid it next time? *</label>
+                            <label for="new-avoid">Step 6: How to avoid it next time? *</label>
                             <textarea id="new-avoid" placeholder="e.g., Practice more chain rule problems..." required></textarea>
                         </div>
                     </div>
@@ -191,8 +209,19 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="edit-topic">Topic</label>
-                        <input type="text" id="edit-topic" required>
+                        <label for="edit-category">Category</label>
+                        <input type="text" id="edit-category" list="edit-category-options" required>
+                        <datalist id="edit-category-options"></datalist>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-subtopics">Subtopics</label>
+                        <input type="text" id="edit-subtopics" placeholder="e.g., Basis, Rank">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-subtopic-dropdown">Pick from existing subtopics</label>
+                        <select id="edit-subtopic-dropdown">
+                            <option value="">Select subtopic to add</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label for="edit-type">Mistake Type</label>
