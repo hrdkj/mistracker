@@ -1,12 +1,13 @@
 import json
 import os
+import sqlite3
 import uuid
 from datetime import datetime
 from typing import Optional
 
-DATA_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "data", "mistakes.json"
-)
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+DB_FILE = os.path.join(DATA_DIR, "mistraker.db")
+IMAGES_DIR = os.path.join(DATA_DIR, "images")
 
 MISTAKE_TYPES = [
     "Conceptual",
@@ -17,37 +18,62 @@ MISTAKE_TYPES = [
     "Memory/Formula",
 ]
 
+CREATE_TABLE = """
+CREATE TABLE IF NOT EXISTS mistakes (
+    id            TEXT PRIMARY KEY,
+    category      TEXT NOT NULL DEFAULT '',
+    subtopics     TEXT NOT NULL DEFAULT '[]',
+    subtopic      TEXT NOT NULL DEFAULT '',
+    concept       TEXT NOT NULL DEFAULT '',
+    topic         TEXT NOT NULL DEFAULT '',
+    question_image TEXT NOT NULL DEFAULT '',
+    solution_image TEXT NOT NULL DEFAULT '',
+    mistake_type  TEXT NOT NULL DEFAULT 'Conceptual',
+    why_happened  TEXT NOT NULL DEFAULT '',
+    how_to_avoid  TEXT NOT NULL DEFAULT '',
+    date_added    TEXT NOT NULL DEFAULT '',
+    date_modified TEXT NOT NULL DEFAULT ''
+);
+"""
 
-def _load_data() -> list[dict]:
-    """Load mistakes from JSON file."""
-    if not os.path.exists(DATA_FILE):
-        return []
+
+def _get_conn() -> sqlite3.Connection:
+    """Get a SQLite connection with row factory."""
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+
+def init_db() -> None:
+    """Create tables and directories if they don't exist."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(IMAGES_DIR, exist_ok=True)
+    conn = _get_conn()
+    conn.execute(CREATE_TABLE)
+    conn.commit()
+    conn.close()
+
+
+def _row_to_dict(row: sqlite3.Row) -> dict:
+    """Convert a sqlite3.Row to a normalized dict."""
+    d = dict(row)
+    # Parse subtopics JSON string back to list
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return []
-
-
-def _save_data(data: list[dict]) -> None:
-    """Save mistakes to JSON file atomically."""
-    temp_file = DATA_FILE + ".tmp"
-    with open(temp_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    os.replace(temp_file, DATA_FILE)
+        d["subtopics"] = json.loads(d.get("subtopics", "[]"))
+    except (json.JSONDecodeError, TypeError):
+        d["subtopics"] = []
+    return d
 
 
 def _normalized_text(value: Optional[str]) -> str:
-    """Normalize optional text values."""
     if not value:
         return ""
     return str(value).strip()
 
 
 def _parse_subtopics(value) -> list[str]:
-    """Normalize subtopics from list/CSV string into a deduplicated list."""
     raw_items = []
-
     if isinstance(value, list):
         raw_items = [str(v) for v in value if v is not None]
     elif isinstance(value, str):
@@ -66,31 +92,7 @@ def _parse_subtopics(value) -> list[str]:
             continue
         seen.add(key)
         result.append(normalized)
-
     return result
-
-
-def _normalize_mistake(mistake: dict) -> dict:
-    """Return a mistake with category/subtopic fields guaranteed."""
-    category = _normalized_text(mistake.get("category"))
-    if not category:
-        category = _normalized_text(mistake.get("topic"))
-
-    subtopics = _parse_subtopics(mistake.get("subtopics"))
-    if not subtopics:
-        subtopics = _parse_subtopics(mistake.get("subtopic"))
-    subtopic = ", ".join(subtopics)
-    concept = _normalized_text(mistake.get("concept"))
-
-    normalized = dict(mistake)
-    normalized["category"] = category
-    normalized["subtopics"] = subtopics
-    normalized["subtopic"] = subtopic
-    normalized["concept"] = concept
-
-    # Keep topic for backward compatibility in old views/clients.
-    normalized["topic"] = category
-    return normalized
 
 
 def get_all_mistakes(
@@ -98,49 +100,48 @@ def get_all_mistakes(
     subtopic: Optional[str] = None,
     mistake_type: Optional[str] = None,
 ) -> list[dict]:
-    """Get all mistakes, optionally filtered by category/subtopic/type."""
-    mistakes = _load_data()
-    mistakes = [_normalize_mistake(m) for m in mistakes]
+    """Get all mistakes, optionally filtered."""
+    conn = _get_conn()
+    query = "SELECT * FROM mistakes WHERE 1=1"
+    params: list = []
 
     if category:
-        category_filter = category.lower()
-        mistakes = [
-            m for m in mistakes if m.get("category", "").lower() == category_filter
-        ]
-
-    if subtopic:
-        subtopic_filter = subtopic.lower()
-        mistakes = [
-            m
-            for m in mistakes
-            if subtopic_filter in [s.lower() for s in m.get("subtopics", [])]
-        ]
+        query += " AND LOWER(category) = LOWER(?)"
+        params.append(category)
 
     if mistake_type:
-        mistakes = [
+        query += " AND LOWER(mistake_type) = LOWER(?)"
+        params.append(mistake_type)
+
+    query += " ORDER BY date_added DESC"
+
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    results = [_row_to_dict(r) for r in rows]
+
+    # Subtopic filtering needs JSON list parsing, do in Python
+    if subtopic:
+        subtopic_lower = subtopic.lower()
+        results = [
             m
-            for m in mistakes
-            if m.get("mistake_type", "").lower() == mistake_type.lower()
+            for m in results
+            if subtopic_lower in [s.lower() for s in m.get("subtopics", [])]
         ]
 
-    # Sort by date, newest first
-    mistakes.sort(key=lambda x: x.get("date_added", ""), reverse=True)
-    return mistakes
+    return results
 
 
 def get_mistake_by_id(mistake_id: str) -> Optional[dict]:
-    """Get a single mistake by ID."""
-    mistakes = _load_data()
-    for m in mistakes:
-        if m.get("id") == mistake_id:
-            return _normalize_mistake(m)
+    conn = _get_conn()
+    row = conn.execute("SELECT * FROM mistakes WHERE id = ?", (mistake_id,)).fetchone()
+    conn.close()
+    if row:
+        return _row_to_dict(row)
     return None
 
 
 def add_mistake(data: dict) -> dict:
-    """Add a new mistake entry."""
-    mistakes = _load_data()
-
     category = _normalized_text(data.get("category"))
     if not category:
         category = _normalized_text(data.get("topic"))
@@ -150,123 +151,161 @@ def add_mistake(data: dict) -> dict:
     if not subtopics:
         subtopics = _parse_subtopics(data.get("subtopic"))
 
-    new_mistake = {
-        "id": str(uuid.uuid4()),
-        "category": category,
-        "subtopics": subtopics,
-        "subtopic": ", ".join(subtopics),
-        "concept": _normalized_text(data.get("concept")),
-        "topic": category,
-        "question_image": data.get("question_image", ""),
-        "solution_image": data.get("solution_image", ""),
-        "mistake_type": data.get("mistake_type", "Conceptual"),
-        "why_happened": data.get("why_happened", "").strip(),
-        "how_to_avoid": data.get("how_to_avoid", "").strip(),
-        "date_added": now,
-        "date_modified": now,
-    }
+    new_id = str(uuid.uuid4())
+    concept = _normalized_text(data.get("concept"))
 
-    mistakes.append(new_mistake)
-    _save_data(mistakes)
-    return new_mistake
+    conn = _get_conn()
+    conn.execute(
+        """INSERT INTO mistakes
+           (id, category, subtopics, subtopic, concept, topic,
+            question_image, solution_image, mistake_type,
+            why_happened, how_to_avoid, date_added, date_modified)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            new_id,
+            category,
+            json.dumps(subtopics),
+            ", ".join(subtopics),
+            concept,
+            category,
+            data.get("question_image", ""),
+            data.get("solution_image", ""),
+            data.get("mistake_type", "Conceptual"),
+            data.get("why_happened", "").strip(),
+            data.get("how_to_avoid", "").strip(),
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    return get_mistake_by_id(new_id)
 
 
 def update_mistake(mistake_id: str, data: dict) -> Optional[dict]:
-    """Update an existing mistake entry."""
-    mistakes = _load_data()
+    existing = get_mistake_by_id(mistake_id)
+    if not existing:
+        return None
 
-    for i, m in enumerate(mistakes):
-        if m.get("id") == mistake_id:
-            # Update fields
-            if "category" in data:
-                category = _normalized_text(data["category"])
-                mistakes[i]["category"] = category
-                mistakes[i]["topic"] = category
-            elif "topic" in data:
-                category = _normalized_text(data["topic"])
-                mistakes[i]["category"] = category
-                mistakes[i]["topic"] = category
-            if "subtopic" in data:
-                subtopics = _parse_subtopics(data["subtopic"])
-                mistakes[i]["subtopics"] = subtopics
-                mistakes[i]["subtopic"] = ", ".join(subtopics)
-            if "subtopics" in data:
-                subtopics = _parse_subtopics(data["subtopics"])
-                mistakes[i]["subtopics"] = subtopics
-                mistakes[i]["subtopic"] = ", ".join(subtopics)
-            if "concept" in data:
-                mistakes[i]["concept"] = _normalized_text(data["concept"])
-            if "question_image" in data:
-                mistakes[i]["question_image"] = data["question_image"]
-            if "solution_image" in data:
-                mistakes[i]["solution_image"] = data["solution_image"]
-            if "mistake_type" in data:
-                mistakes[i]["mistake_type"] = data["mistake_type"]
-            if "why_happened" in data:
-                mistakes[i]["why_happened"] = data["why_happened"].strip()
-            if "how_to_avoid" in data:
-                mistakes[i]["how_to_avoid"] = data["how_to_avoid"].strip()
+    # Build updated fields
+    if "category" in data:
+        category = _normalized_text(data["category"])
+    elif "topic" in data:
+        category = _normalized_text(data["topic"])
+    else:
+        category = existing["category"]
 
-            mistakes[i]["date_modified"] = datetime.now().isoformat()
-            _save_data(mistakes)
-            return _normalize_mistake(mistakes[i])
+    if "subtopics" in data:
+        subtopics = _parse_subtopics(data["subtopics"])
+    elif "subtopic" in data:
+        subtopics = _parse_subtopics(data["subtopic"])
+    else:
+        subtopics = existing["subtopics"]
 
-    return None
+    concept = _normalized_text(data["concept"]) if "concept" in data else existing["concept"]
+    question_image = data.get("question_image", existing["question_image"])
+    solution_image = data.get("solution_image", existing["solution_image"])
+    mistake_type = data.get("mistake_type", existing["mistake_type"])
+    why_happened = data["why_happened"].strip() if "why_happened" in data else existing["why_happened"]
+    how_to_avoid = data["how_to_avoid"].strip() if "how_to_avoid" in data else existing["how_to_avoid"]
+
+    conn = _get_conn()
+    conn.execute(
+        """UPDATE mistakes SET
+           category = ?, subtopics = ?, subtopic = ?, concept = ?, topic = ?,
+           question_image = ?, solution_image = ?, mistake_type = ?,
+           why_happened = ?, how_to_avoid = ?, date_modified = ?
+           WHERE id = ?""",
+        (
+            category,
+            json.dumps(subtopics),
+            ", ".join(subtopics),
+            concept,
+            category,
+            question_image,
+            solution_image,
+            mistake_type,
+            why_happened,
+            how_to_avoid,
+            datetime.now().isoformat(),
+            mistake_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return get_mistake_by_id(mistake_id)
+
+
+def _delete_image_file(url: str) -> None:
+    """Delete an image file from disk given its serving URL."""
+    if not url or not url.startswith("/api/images/"):
+        return
+    filename = url.split("/")[-1]
+    filepath = os.path.join(IMAGES_DIR, filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
 
 
 def delete_mistake(mistake_id: str) -> bool:
-    """Delete a mistake entry."""
-    mistakes = _load_data()
-    original_len = len(mistakes)
-    mistakes = [m for m in mistakes if m.get("id") != mistake_id]
+    existing = get_mistake_by_id(mistake_id)
+    if not existing:
+        return False
 
-    if len(mistakes) < original_len:
-        _save_data(mistakes)
-        return True
-    return False
+    # Delete associated images
+    _delete_image_file(existing.get("question_image", ""))
+    _delete_image_file(existing.get("solution_image", ""))
+
+    conn = _get_conn()
+    conn.execute("DELETE FROM mistakes WHERE id = ?", (mistake_id,))
+    conn.commit()
+    conn.close()
+    return True
 
 
 def get_all_categories() -> list[str]:
-    """Get all unique categories."""
-    mistakes = _load_data()
-    categories = set()
-    for m in mistakes:
-        normalized = _normalize_mistake(m)
-        category = normalized.get("category", "")
-        if category:
-            categories.add(category)
-    return sorted(list(categories))
+    conn = _get_conn()
+    rows = conn.execute(
+        "SELECT DISTINCT category FROM mistakes WHERE category != '' ORDER BY category"
+    ).fetchall()
+    conn.close()
+    return [r["category"] for r in rows]
 
 
 def get_all_subtopics(category: Optional[str] = None) -> list[str]:
-    """Get all unique subtopics, optionally by category."""
-    mistakes = _load_data()
-    subtopics = set()
-    category_filter = category.lower() if category else None
+    conn = _get_conn()
+    if category:
+        rows = conn.execute(
+            "SELECT subtopics FROM mistakes WHERE LOWER(category) = LOWER(?)",
+            (category,),
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT subtopics FROM mistakes").fetchall()
+    conn.close()
 
-    for m in mistakes:
-        normalized = _normalize_mistake(m)
-        if (
-            category_filter
-            and normalized.get("category", "").lower() != category_filter
-        ):
-            continue
+    all_subtopics = set()
+    for row in rows:
+        try:
+            subs = json.loads(row["subtopics"])
+            for s in subs:
+                if s:
+                    all_subtopics.add(s)
+        except (json.JSONDecodeError, TypeError):
+            pass
 
-        for subtopic in normalized.get("subtopics", []):
-            if subtopic:
-                subtopics.add(subtopic)
-
-    return sorted(list(subtopics))
+    return sorted(list(all_subtopics))
 
 
 def get_analytics() -> dict:
-    """Get analytics data for the dashboard."""
-    mistakes = _load_data()
+    conn = _get_conn()
+    rows = conn.execute("SELECT * FROM mistakes").fetchall()
+    conn.close()
 
-    # Count by mistake type
-    type_counts = {}
-    for mt in MISTAKE_TYPES:
-        type_counts[mt] = 0
+    mistakes = [_row_to_dict(r) for r in rows]
+
+    type_counts = {mt: 0 for mt in MISTAKE_TYPES}
+    category_counts = {}
+    subtopic_counts = {}
 
     for m in mistakes:
         mt = m.get("mistake_type", "Conceptual")
@@ -275,30 +314,19 @@ def get_analytics() -> dict:
         else:
             type_counts[mt] = 1
 
-    # Count by category
-    category_counts = {}
-
-    # Count by subtopic (nested under category when possible)
-    subtopic_counts = {}
-
-    for m in mistakes:
-        normalized = _normalize_mistake(m)
-
-        category = normalized.get("category", "").strip() or "Uncategorized"
+        category = m.get("category", "").strip() or "Uncategorized"
         category_counts[category] = category_counts.get(category, 0) + 1
 
-        normalized_subtopics = normalized.get("subtopics", [])
-        if normalized_subtopics:
-            for subtopic in normalized_subtopics:
-                subtopic_key = f"{category} - {subtopic}"
-                subtopic_counts[subtopic_key] = subtopic_counts.get(subtopic_key, 0) + 1
+        subs = m.get("subtopics", [])
+        if subs:
+            for sub in subs:
+                key = f"{category} - {sub}"
+                subtopic_counts[key] = subtopic_counts.get(key, 0) + 1
         else:
-            subtopic_key = f"{category} - Unspecified"
-            subtopic_counts[subtopic_key] = subtopic_counts.get(subtopic_key, 0) + 1
+            key = f"{category} - Unspecified"
+            subtopic_counts[key] = subtopic_counts.get(key, 0) + 1
 
-    sorted_categories = sorted(
-        category_counts.items(), key=lambda x: x[1], reverse=True
-    )
+    sorted_categories = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
     sorted_subtopics = sorted(subtopic_counts.items(), key=lambda x: x[1], reverse=True)
 
     return {

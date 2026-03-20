@@ -4,205 +4,235 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mistake Tracker</title>
+    <meta name="description" content="Track your study mistakes, learn from them, and improve your performance.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Mistake Tracker</h1>
-            <p class="subtitle">Track your mistakes, learn from them, improve</p>
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <div class="app-shell">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-inner">
+                <div class="header-brand">
+                    <span class="brand-icon">📊</span>
+                    <div>
+                        <h1>Mistake Tracker</h1>
+                        <p class="subtitle">Track mistakes, learn patterns, improve faster</p>
+                    </div>
+                </div>
+                <nav class="tab-nav" id="tab-nav">
+                    <button class="tab-btn active" data-tab="mistakes-tab">
+                        <span class="tab-icon">📋</span> Mistakes
+                    </button>
+                    <button class="tab-btn" data-tab="add-tab">
+                        <span class="tab-icon">➕</span> Add New
+                    </button>
+                </nav>
+            </div>
         </header>
 
-        <!-- Tab Navigation -->
-        <nav class="tab-nav">
-            <button class="tab-btn active" data-tab="mistakes-tab">Your Mistakes</button>
-            <button class="tab-btn" data-tab="add-tab">Add New Mistake</button>
-        </nav>
-
-        <!-- Tab Content: Your Mistakes -->
-        <div id="mistakes-tab" class="tab-content active">
-            <!-- Filters Section -->
-            <section class="filters-section">
-                <div class="filter-group">
-                    <label for="filter-category">Category:</label>
-                    <select id="filter-category">
-                        <option value="">All Categories</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="filter-subtopic">Subtopic:</label>
-                    <select id="filter-subtopic">
-                        <option value="">All Subtopics</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="filter-type">Mistake Type:</label>
-                    <select id="filter-type">
-                        <option value="">All Types</option>
-                        {% for mt in mistake_types %}
-                        <option value="{{ mt }}">{{ mt }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <button id="clear-filters" class="btn btn-secondary">Clear Filters</button>
-                <button id="toggle-analytics" class="btn btn-secondary">Show Analytics</button>
-            </section>
-
-            <!-- Analytics Section (hidden by default) -->
-            <section id="analytics-section" class="analytics-section hidden">
-                <div class="analytics-cards">
-                    <div class="stat-card">
-                        <span class="stat-value" id="total-mistakes">0</span>
-                        <span class="stat-label">Total Mistakes</span>
+        <main class="app-main">
+            <!-- Tab Content: Your Mistakes -->
+            <div id="mistakes-tab" class="tab-content active">
+                <!-- Stats Bar -->
+                <section class="stats-bar" id="stats-bar">
+                    <div class="stat-pill" id="stat-total">
+                        <span class="stat-pill-value">0</span>
+                        <span class="stat-pill-label">Total</span>
                     </div>
-                    <div class="stat-card">
-                        <span class="stat-value" id="most-common-type">-</span>
-                        <span class="stat-label">Most Common Type</span>
+                    <div class="stat-pill" id="stat-common-type">
+                        <span class="stat-pill-value">—</span>
+                        <span class="stat-pill-label">Most Common</span>
                     </div>
-                </div>
-                <div class="charts-container">
-                    <div class="chart-wrapper">
-                        <h3>Mistakes by Type</h3>
-                        <canvas id="type-chart"></canvas>
-                    </div>
-                    <div class="chart-wrapper">
-                        <h3>Mistakes by Category</h3>
-                        <canvas id="category-chart"></canvas>
-                    </div>
-                </div>
-            </section>
+                </section>
 
-            <!-- Mistakes Table -->
-            <section class="table-section">
-                <h2>Your Mistakes <span id="mistake-count" class="count-badge">0</span></h2>
-                <div class="table-container">
-                    <table id="mistakes-table">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Category</th>
-                                <th>Subtopic</th>
-                                <th>Question</th>
-                                <th>Solution</th>
-                                <th>Type</th>
-                                <th>Why It Happened</th>
-                                <th>How to Avoid</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="mistakes-tbody">
-                            <!-- Rows will be inserted here by JavaScript -->
-                        </tbody>
-                    </table>
-                    <p id="no-data" class="no-data hidden">No mistakes recorded yet. Switch to "Add New Mistake" tab to add your first one!</p>
-                </div>
-            </section>
-        </div>
+                <!-- Search & Filters -->
+                <section class="toolbar">
+                    <div class="search-wrapper">
+                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        <input type="text" id="search-input" class="search-input" placeholder="Search mistakes…" autocomplete="off">
+                    </div>
+                    <div class="filter-chips">
+                        <select id="filter-category" class="chip-select">
+                            <option value="">All Categories</option>
+                        </select>
+                        <select id="filter-subtopic" class="chip-select">
+                            <option value="">All Subtopics</option>
+                        </select>
+                        <select id="filter-type" class="chip-select">
+                            <option value="">All Types</option>
+                            {% for mt in mistake_types %}
+                            <option value="{{ mt }}">{{ mt }}</option>
+                            {% endfor %}
+                        </select>
+                        <button id="clear-filters" class="chip-btn-clear" title="Clear filters">✕</button>
+                    </div>
+                </section>
 
-        <!-- Tab Content: Add New Mistake -->
-        <div id="add-tab" class="tab-content">
-            <section class="add-section">
-                <h2>Add New Mistake</h2>
-                <form id="add-form">
-                    <!-- Step 1: Images -->
-                    <div class="form-row">
-                        <div class="form-group image-paste-area" id="image-paste-area">
-                            <label>Step 1: Paste Question Image (Ctrl+V)</label>
-                            <div class="paste-zone" id="paste-zone">
-                                <span class="paste-hint">Click here and paste image (Ctrl+V)</span>
-                                <img id="preview-image" class="hidden" alt="Question preview">
-                                <button type="button" id="clear-image" class="btn-clear hidden">Clear</button>
+                <!-- Analytics (hidden by default) -->
+                <section id="analytics-section" class="analytics-section hidden">
+                    <div class="charts-container">
+                        <div class="chart-card">
+                            <h3>Mistakes by Type</h3>
+                            <canvas id="type-chart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Mistakes by Category</h3>
+                            <canvas id="category-chart"></canvas>
+                        </div>
+                    </div>
+                </section>
+                <button id="toggle-analytics" class="analytics-toggle">
+                    <span id="analytics-toggle-text">Show Analytics</span>
+                </button>
+
+                <!-- Cards Grid -->
+                <section class="cards-section">
+                    <div class="cards-grid" id="cards-grid">
+                        <!-- Cards will be inserted by JS -->
+                    </div>
+                    <p id="no-data" class="empty-state hidden">
+                        <span class="empty-icon">📝</span>
+                        No mistakes recorded yet.<br>
+                        <span class="empty-sub">Switch to "Add New" tab to track your first mistake!</span>
+                    </p>
+                </section>
+            </div>
+
+            <!-- Tab Content: Add New Mistake -->
+            <div id="add-tab" class="tab-content">
+                <section class="form-card">
+                    <h2 class="form-title">Log a New Mistake</h2>
+                    <form id="add-form">
+                        <!-- Images Row -->
+                        <div class="form-row form-row-images">
+                            <div class="form-group">
+                                <label>Question Image <span class="label-hint">(Paste or drop)</span></label>
+                                <div class="paste-zone" id="paste-zone" tabindex="0">
+                                    <span class="paste-hint">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28">
+                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                        </svg>
+                                        Ctrl+V or drag an image
+                                    </span>
+                                    <img id="preview-image" class="hidden" alt="Question preview">
+                                    <button type="button" id="clear-image" class="btn-clear hidden">✕</button>
+                                </div>
+                                <input type="hidden" id="new-image" value="">
                             </div>
-                            <input type="hidden" id="new-image" value="">
-                        </div>
-                        <div class="form-group image-paste-area" id="solution-paste-area">
-                            <label>Solution Image (Optional - Ctrl+V)</label>
-                            <div class="paste-zone" id="solution-paste-zone">
-                                <span class="paste-hint">Click here and paste image (Ctrl+V)</span>
-                                <img id="solution-preview-image" class="hidden" alt="Solution preview">
-                                <button type="button" id="clear-solution-image" class="btn-clear hidden">Clear</button>
+                            <div class="form-group">
+                                <label>Solution Image <span class="label-hint">(optional)</span></label>
+                                <div class="paste-zone" id="solution-paste-zone" tabindex="0">
+                                    <span class="paste-hint">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28">
+                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                        </svg>
+                                        Ctrl+V or drag an image
+                                    </span>
+                                    <img id="solution-preview-image" class="hidden" alt="Solution preview">
+                                    <button type="button" id="clear-solution-image" class="btn-clear hidden">✕</button>
+                                </div>
+                                <input type="hidden" id="new-solution-image" value="">
                             </div>
-                            <input type="hidden" id="new-solution-image" value="">
                         </div>
-                    </div>
 
-                    <!-- Step 2: Category, subtopic, and type -->
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="new-category">Step 2: Category *</label>
-                            <input type="text" id="new-category" list="category-options" placeholder="e.g., Linear Algebra" required>
-                            <datalist id="category-options"></datalist>
+                        <!-- Details Row -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="new-category">Category *</label>
+                                <input type="text" id="new-category" list="category-options" placeholder="e.g., Linear Algebra" required>
+                                <datalist id="category-options"></datalist>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-subtopics">Subtopics</label>
+                                <input type="text" id="new-subtopics" placeholder="e.g., Basis, Dimension, Rank">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="new-subtopics">Step 3: Subtopics (Optional)</label>
-                            <input type="text" id="new-subtopics" placeholder="e.g., Basis, Dimension, Rank">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="new-subtopic-dropdown">Pick existing subtopic</label>
+                                <select id="new-subtopic-dropdown">
+                                    <option value="">Select subtopic to add</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-concept">Concept</label>
+                                <input type="text" id="new-concept" placeholder="e.g., Chain rule application">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="new-subtopic-dropdown">Pick from existing subtopics</label>
-                            <select id="new-subtopic-dropdown">
-                                <option value="">Select subtopic to add</option>
-                            </select>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="new-type">Mistake Type *</label>
+                                <select id="new-type" required>
+                                    {% for mt in mistake_types %}
+                                    <option value="{{ mt }}">{{ mt }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="new-type">Step 4: Mistake Type *</label>
-                            <select id="new-type" required>
-                                {% for mt in mistake_types %}
-                                <option value="{{ mt }}">{{ mt }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                    </div>
 
-                    <!-- Step 3: Analysis -->
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="new-why">Step 5: Why did this mistake happen? *</label>
-                            <textarea id="new-why" placeholder="e.g., Didn't understand the chain rule..." required></textarea>
+                        <!-- Analysis Row -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="new-why">Why did this happen? *</label>
+                                <textarea id="new-why" placeholder="e.g., Didn't understand the chain rule..." required></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-avoid">How to avoid it? *</label>
+                                <textarea id="new-avoid" placeholder="e.g., Practice more chain rule problems..." required></textarea>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="new-avoid">Step 6: How to avoid it next time? *</label>
-                            <textarea id="new-avoid" placeholder="e.g., Practice more chain rule problems..." required></textarea>
-                        </div>
-                    </div>
 
-                    <button type="submit" class="btn btn-primary btn-large">Add Mistake</button>
-                </form>
-            </section>
-        </div>
+                        <button type="submit" class="btn btn-primary btn-large">
+                            <span>Add Mistake</span>
+                        </button>
+                    </form>
+                </section>
+            </div>
+        </main>
     </div>
 
     <!-- Image Modal -->
     <div id="image-modal" class="modal hidden">
-        <div class="modal-content">
-            <span class="modal-close">&times;</span>
-            <img id="modal-image" src="" alt="Full size question">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-image-content">
+            <button class="modal-close-btn">✕</button>
+            <img id="modal-image" src="" alt="Full size image">
         </div>
     </div>
 
     <!-- Edit Modal -->
     <div id="edit-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
         <div class="modal-content edit-modal-content">
-            <span class="modal-close">&times;</span>
+            <button class="modal-close-btn">✕</button>
             <h2>Edit Mistake</h2>
             <form id="edit-form">
                 <input type="hidden" id="edit-id">
-                <div class="form-row">
-                    <div class="form-group image-paste-area">
-                        <label>Question Image (Ctrl+V to paste new)</label>
-                        <div class="paste-zone" id="edit-paste-zone">
-                            <span class="paste-hint">Click here and paste image (Ctrl+V)</span>
+                <div class="form-row form-row-images">
+                    <div class="form-group">
+                        <label>Question Image</label>
+                        <div class="paste-zone" id="edit-paste-zone" tabindex="0">
+                            <span class="paste-hint">Ctrl+V to paste new</span>
                             <img id="edit-preview-image" class="hidden" alt="Question preview">
-                            <button type="button" id="edit-clear-image" class="btn-clear hidden">Clear</button>
+                            <button type="button" id="edit-clear-image" class="btn-clear hidden">✕</button>
                         </div>
                         <input type="hidden" id="edit-image" value="">
                     </div>
-                    <div class="form-group image-paste-area">
-                        <label>Solution Image (Optional - Ctrl+V)</label>
-                        <div class="paste-zone" id="edit-solution-paste-zone">
-                            <span class="paste-hint">Click here and paste image (Ctrl+V)</span>
+                    <div class="form-group">
+                        <label>Solution Image</label>
+                        <div class="paste-zone" id="edit-solution-paste-zone" tabindex="0">
+                            <span class="paste-hint">Ctrl+V to paste new</span>
                             <img id="edit-solution-preview-image" class="hidden" alt="Solution preview">
-                            <button type="button" id="edit-clear-solution-image" class="btn-clear hidden">Clear</button>
+                            <button type="button" id="edit-clear-solution-image" class="btn-clear hidden">✕</button>
                         </div>
                         <input type="hidden" id="edit-solution-image" value="">
                     </div>
@@ -217,12 +247,20 @@
                         <label for="edit-subtopics">Subtopics</label>
                         <input type="text" id="edit-subtopics" placeholder="e.g., Basis, Rank">
                     </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
-                        <label for="edit-subtopic-dropdown">Pick from existing subtopics</label>
+                        <label for="edit-subtopic-dropdown">Pick from existing</label>
                         <select id="edit-subtopic-dropdown">
                             <option value="">Select subtopic to add</option>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label for="edit-concept">Concept</label>
+                        <input type="text" id="edit-concept" placeholder="e.g., Chain rule">
+                    </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label for="edit-type">Mistake Type</label>
                         <select id="edit-type" required>
@@ -234,30 +272,32 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="edit-why">Why did this mistake happen?</label>
+                        <label for="edit-why">Why did this happen?</label>
                         <textarea id="edit-why" required></textarea>
                     </div>
                     <div class="form-group">
-                        <label for="edit-avoid">How to avoid it next time?</label>
+                        <label for="edit-avoid">How to avoid it?</label>
                         <textarea id="edit-avoid" required></textarea>
                     </div>
                 </div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Save Changes</button>
-                    <button type="button" class="btn btn-secondary" id="cancel-edit">Cancel</button>
+                    <button type="button" class="btn btn-ghost" id="cancel-edit">Cancel</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Delete Confirmation Modal -->
+    <!-- Delete Modal -->
     <div id="delete-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
         <div class="modal-content delete-modal-content">
+            <div class="delete-icon">🗑️</div>
             <h2>Delete Mistake?</h2>
-            <p>Are you sure you want to delete this mistake? This cannot be undone.</p>
+            <p>This action cannot be undone.</p>
             <div class="form-actions">
                 <button type="button" class="btn btn-danger" id="confirm-delete">Delete</button>
-                <button type="button" class="btn btn-secondary" id="cancel-delete">Cancel</button>
+                <button type="button" class="btn btn-ghost" id="cancel-delete">Cancel</button>
             </div>
         </div>
     </div>

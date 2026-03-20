@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Data (local)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/images/
+data/*.json.bak
