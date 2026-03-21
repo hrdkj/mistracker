@@ -14,7 +14,8 @@ let didHydrateLastEntryFromMistakes = false;
 const LAST_ENTRY_DETAILS_KEY = 'mistakeTracker.lastEntryDetails';
 
 // ── DOM Elements ──────────────────────────────────────────────────
-const cardsGrid = document.getElementById('cards-grid');
+const mistakesTable = document.getElementById('mistakes-tbody');
+const mistakeCount = document.getElementById('mistake-count');
 const noDataMessage = document.getElementById('no-data');
 const filterCategory = document.getElementById('filter-category');
 const filterSubtopic = document.getElementById('filter-subtopic');
@@ -97,7 +98,7 @@ async function loadMistakes() {
     const response = await fetch(`/api/mistakes?${params}`);
     mistakes = await response.json();
     hydrateLastEntryDetailsFromMistakes();
-    renderCards();
+    renderTable();
     loadQuickStats();
 }
 
@@ -261,8 +262,8 @@ async function uploadImageFile(file) {
 }
 
 // ── Render Functions ──────────────────────────────────────────────
-function renderCards() {
-    cardsGrid.innerHTML = '';
+function renderTable() {
+    mistakesTable.innerHTML = '';
     let filtered = mistakes;
 
     // Client-side search filter
@@ -280,82 +281,56 @@ function renderCards() {
 
     if (filtered.length === 0) {
         noDataMessage.classList.remove('hidden');
+        if(mistakeCount) mistakeCount.textContent = '0';
         return;
     }
     noDataMessage.classList.add('hidden');
+    if(mistakeCount) mistakeCount.textContent = filtered.length;
 
     filtered.forEach(m => {
-        const card = document.createElement('div');
-        card.className = 'mistake-card';
-        const badgeClass = (m.mistake_type || 'conceptual').toLowerCase().replace(/[\/\s]/g, '-');
-        const expandId = `expand-${m.id}`;
-
-        card.innerHTML = `
-            <div class="card-header">
-                <div class="card-meta">
-                    <div class="card-category">${escapeHtml(m.category || m.topic || '')}</div>
-                    <div class="card-subtopic">${escapeHtml(m.subtopic || '')}</div>
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td data-label="Date">${formatDate(m.date_added)}</td>
+            <td data-label="Category">${escapeHtml(m.category || m.topic || '')}</td>
+            <td data-label="Subtopic">${escapeHtml(m.subtopic || '')}</td>
+            <td data-label="Question">${renderThumbnail(m.question_image, m.id, 'question')}</td>
+            <td data-label="Solution">${renderThumbnail(m.solution_image, m.id, 'solution')}</td>
+            <td data-label="Type">${renderMistakeType(m.mistake_type)}</td>
+            <td data-label="Why It Happened">${escapeHtml(m.why_happened)}</td>
+            <td data-label="How to Avoid">${escapeHtml(m.how_to_avoid)}</td>
+            <td data-label="Actions">
+                <div class="action-btns">
+                    <button class="card-action-btn edit-btn" data-id="${m.id}" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+                    <button class="card-action-btn delete-btn" data-id="${m.id}" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
                 </div>
-                <div class="card-date">${formatDate(m.date_added)}</div>
-            </div>
-            <div class="card-body">
-                <div class="card-images">
-                    ${m.question_image ? `<img src="${m.question_image}" class="card-thumb" data-src="${m.question_image}" alt="Question" loading="lazy">` : ''}
-                    ${m.solution_image ? `<img src="${m.solution_image}" class="card-thumb" data-src="${m.solution_image}" alt="Solution" loading="lazy">` : ''}
-                </div>
-                <div class="card-badges">
-                    <span class="badge badge-${badgeClass}">${escapeHtml(m.mistake_type)}</span>
-                </div>
-                ${m.concept ? `<div class="card-concept">${escapeHtml(m.concept)}</div>` : ''}
-                <div class="card-detail">
-                    <div class="card-detail-label">Why it happened</div>
-                    <div class="card-detail-text">${escapeHtml(truncate(m.why_happened, 100))}</div>
-                </div>
-            </div>
-            <div class="card-expanded" id="${expandId}">
-                <div class="card-detail">
-                    <div class="card-detail-label">Full explanation</div>
-                    <div class="card-detail-text">${escapeHtml(m.why_happened)}</div>
-                </div>
-                <div class="card-detail">
-                    <div class="card-detail-label">How to avoid</div>
-                    <div class="card-detail-text">${escapeHtml(m.how_to_avoid)}</div>
-                </div>
-            </div>
-            <button class="card-expand-toggle" data-target="${expandId}">▼ Show more</button>
-            <div class="card-actions">
-                <button class="card-action-btn edit-btn" data-id="${m.id}">✏️ Edit</button>
-                <button class="card-action-btn delete-btn" data-id="${m.id}">🗑️ Delete</button>
-            </div>
+            </td>
         `;
-        cardsGrid.appendChild(card);
+        mistakesTable.appendChild(row);
     });
 
-    // Event listeners
-    cardsGrid.querySelectorAll('.card-expand-toggle').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const target = document.getElementById(btn.dataset.target);
-            if (target.classList.contains('show')) {
-                target.classList.remove('show');
-                btn.textContent = '▼ Show more';
-            } else {
-                target.classList.add('show');
-                btn.textContent = '▲ Show less';
-            }
-        });
-    });
-
-    cardsGrid.querySelectorAll('.edit-btn').forEach(btn => {
+    mistakesTable.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', () => openEditModal(btn.dataset.id));
     });
 
-    cardsGrid.querySelectorAll('.delete-btn').forEach(btn => {
+    mistakesTable.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', () => openDeleteModal(btn.dataset.id));
     });
 
-    cardsGrid.querySelectorAll('.card-thumb').forEach(img => {
+    mistakesTable.querySelectorAll('.card-thumb').forEach(img => {
         img.addEventListener('click', () => openImageModal(img.dataset.src));
     });
+}
+
+function renderThumbnail(imageData, id, type) {
+    if (!imageData) {
+        return '<span class="no-image">—</span>';
+    }
+    return `<img src="${imageData}" class="card-thumb" data-src="${imageData}" alt="${type}">`;
+}
+
+function renderMistakeType(type) {
+    const className = (type || 'conceptual').toLowerCase().replace(/[\/\s]/g, '-');
+    return `<span class="badge badge-${className}">${escapeHtml(type)}</span>`;
 }
 
 function renderCategoryFilter() {
@@ -458,7 +433,7 @@ function setupEventListeners() {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
             searchQuery = searchInput.value.trim();
-            renderCards();
+            renderTable();
         }, 200);
     });
 
