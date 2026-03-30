@@ -9,7 +9,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <!-- Toast Container -->
@@ -23,7 +22,6 @@
                     <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
                     <div>
                         <h1>Mistake Tracker</h1>
-                        <p class="subtitle">Track mistakes, learn patterns, improve faster</p>
                     </div>
                 </div>
                 <nav class="tab-nav" id="tab-nav">
@@ -40,17 +38,7 @@
         <main class="app-main">
             <!-- Tab Content: Your Mistakes -->
             <div id="mistakes-tab" class="tab-content active">
-                <!-- Stats Bar -->
-                <section class="stats-bar" id="stats-bar">
-                    <div class="stat-pill" id="stat-total">
-                        <span class="stat-pill-value">0</span>
-                        <span class="stat-pill-label">Total</span>
-                    </div>
-                    <div class="stat-pill" id="stat-common-type">
-                        <span class="stat-pill-value">—</span>
-                        <span class="stat-pill-label">Most Common</span>
-                    </div>
-                </section>
+                <!-- Stats Bar Removed -->
 
                 <!-- Search & Filters -->
                 <section class="toolbar">
@@ -77,22 +65,7 @@
                     </div>
                 </section>
 
-                <!-- Analytics (hidden by default) -->
-                <section id="analytics-section" class="analytics-section hidden">
-                    <div class="charts-container">
-                        <div class="chart-card">
-                            <h3>Mistakes by Type</h3>
-                            <canvas id="type-chart"></canvas>
-                        </div>
-                        <div class="chart-card">
-                            <h3>Mistakes by Category</h3>
-                            <canvas id="category-chart"></canvas>
-                        </div>
-                    </div>
-                </section>
-                <button id="toggle-analytics" class="analytics-toggle">
-                    <span id="analytics-toggle-text">Show Analytics</span>
-                </button>
+                <!-- Analytics Removed -->
 
                 <!-- Mistakes Table -->
                 <section class="table-section">

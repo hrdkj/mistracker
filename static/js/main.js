@@ -7,8 +7,7 @@ let subtopics = [];
 let currentFilters = { category: '', subtopic: '', mistake_type: '' };
 let searchQuery = '';
 let deleteTargetId = null;
-let typeChart = null;
-let categoryChart = null;
+
 let didHydrateLastEntryFromMistakes = false;
 
 const LAST_ENTRY_DETAILS_KEY = 'mistakeTracker.lastEntryDetails';
@@ -21,8 +20,7 @@ const filterCategory = document.getElementById('filter-category');
 const filterSubtopic = document.getElementById('filter-subtopic');
 const filterType = document.getElementById('filter-type');
 const clearFiltersBtn = document.getElementById('clear-filters');
-const toggleAnalyticsBtn = document.getElementById('toggle-analytics');
-const analyticsSection = document.getElementById('analytics-section');
+
 const searchInput = document.getElementById('search-input');
 const addForm = document.getElementById('add-form');
 const editForm = document.getElementById('edit-form');
@@ -83,8 +81,7 @@ function showToast(message, type = 'success') {
     container.appendChild(toast);
 
     setTimeout(() => {
-        toast.classList.add('toast-out');
-        toast.addEventListener('animationend', () => toast.remove());
+        toast.remove();
     }, 2800);
 }
 
@@ -99,17 +96,8 @@ async function loadMistakes() {
     mistakes = await response.json();
     hydrateLastEntryDetailsFromMistakes();
     renderTable();
-    loadQuickStats();
 }
 
-async function loadQuickStats() {
-    try {
-        const response = await fetch('/api/analytics');
-        const data = await response.json();
-        document.getElementById('stat-total').querySelector('.stat-pill-value').textContent = data.total_mistakes;
-        document.getElementById('stat-common-type').querySelector('.stat-pill-value').textContent = data.most_common_type || '—';
-    } catch (e) { /* ignore */ }
-}
 
 function getSavedEntryDetails() {
     try {
@@ -223,11 +211,6 @@ function appendSubtopicToInput(inputId, subtopic) {
     input.value = current.join(', ');
 }
 
-async function loadAnalytics() {
-    const response = await fetch('/api/analytics');
-    const data = await response.json();
-    renderAnalytics(data);
-}
 
 async function apiAddMistake(data) {
     const response = await fetch('/api/mistakes', {
@@ -370,60 +353,6 @@ function renderCategorySuggestions() {
     });
 }
 
-function renderAnalytics(data) {
-    const typeCtx = document.getElementById('type-chart').getContext('2d');
-    const typeLabels = Object.keys(data.type_distribution);
-    const typeValues = Object.values(data.type_distribution);
-
-    if (typeChart) typeChart.destroy();
-    typeChart = new Chart(typeCtx, {
-        type: 'doughnut',
-        data: {
-            labels: typeLabels,
-            datasets: [{
-                data: typeValues,
-                backgroundColor: ['#fbbf24', '#f87171', '#6366f1', '#a78bfa', '#f472b6', '#34d399'],
-                borderColor: '#141926',
-                borderWidth: 3
-            }]
-        },
-        options: {
-            responsive: true,
-            cutout: '60%',
-            plugins: {
-                legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11, family: 'Inter' }, padding: 16 } }
-            }
-        }
-    });
-
-    const categoryCtx = document.getElementById('category-chart').getContext('2d');
-    const categoryLabels = Object.keys(data.category_distribution || {});
-    const categoryValues = Object.values(data.category_distribution || {});
-
-    if (categoryChart) categoryChart.destroy();
-    categoryChart = new Chart(categoryCtx, {
-        type: 'bar',
-        data: {
-            labels: categoryLabels,
-            datasets: [{
-                label: 'Mistakes',
-                data: categoryValues,
-                backgroundColor: '#6366f1',
-                borderRadius: 6,
-                borderSkipped: false
-            }]
-        },
-        options: {
-            responsive: true,
-            indexAxis: 'y',
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { beginAtZero: true, ticks: { stepSize: 1, color: '#5a6a85' }, grid: { color: '#1c2233' } },
-                y: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { display: false } }
-            }
-        }
-    });
-}
 
 // ── Event Listeners ───────────────────────────────────────────────
 function setupEventListeners() {
@@ -486,17 +415,6 @@ function setupEventListeners() {
         loadMistakes();
     });
 
-    // Analytics
-    toggleAnalyticsBtn.addEventListener('click', () => {
-        analyticsSection.classList.toggle('hidden');
-        const text = document.getElementById('analytics-toggle-text');
-        if (!analyticsSection.classList.contains('hidden')) {
-            text.textContent = 'Hide Analytics';
-            loadAnalytics();
-        } else {
-            text.textContent = 'Show Analytics';
-        }
-    });
 
     // Add form
     addForm.addEventListener('submit', async (e) => {
@@ -527,7 +445,6 @@ function setupEventListeners() {
         loadMistakes();
         loadCategories();
         loadSubtopics(document.getElementById('new-category').value);
-        if (!analyticsSection.classList.contains('hidden')) loadAnalytics();
         switchTab('mistakes-tab');
     });
 
@@ -551,7 +468,6 @@ function setupEventListeners() {
         loadMistakes();
         loadCategories();
         loadSubtopics();
-        if (!analyticsSection.classList.contains('hidden')) loadAnalytics();
     });
 
     // Cancel edit
@@ -567,7 +483,6 @@ function setupEventListeners() {
             loadMistakes();
             loadCategories();
             loadSubtopics();
-            if (!analyticsSection.classList.contains('hidden')) loadAnalytics();
         }
     });
     document.getElementById('cancel-delete').addEventListener('click', closeDeleteModal);
