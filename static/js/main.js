@@ -749,7 +749,7 @@ function openImageModal(src) {
 function formatDate(isoString) {
     if (!isoString) return '';
     const d = new Date(isoString);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
 function escapeHtml(text) {

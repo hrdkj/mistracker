@@ -7,7 +7,7 @@
     <meta name="description" content="Track your study mistakes, learn from them, and improve your performance.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
@@ -38,40 +38,58 @@
         <main class="app-main">
             <!-- Tab Content: Your Mistakes -->
             <div id="mistakes-tab" class="tab-content active">
-                <!-- Stats Bar Removed -->
-
-                <!-- Search & Filters -->
                 <section class="toolbar">
-                    <div class="search-wrapper">
-                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                        </svg>
-                        <input type="text" id="search-input" class="search-input" placeholder="Search mistakes…" autocomplete="off">
+                    <div class="toolbar-block">
+                        <div class="search-wrapper">
+                            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                            </svg>
+                            <input type="text" id="search-input" class="search-input" placeholder="Search category, subtopic, reason, or mistake type" autocomplete="off">
+                        </div>
                     </div>
-                    <div class="filter-chips">
-                        <select id="filter-category" class="chip-select">
-                            <option value="">All Categories</option>
-                        </select>
-                        <select id="filter-subtopic" class="chip-select">
-                            <option value="">All Subtopics</option>
-                        </select>
-                        <select id="filter-type" class="chip-select">
-                            <option value="">All Types</option>
-                            {% for mt in mistake_types %}
-                            <option value="{{ mt }}">{{ mt }}</option>
-                            {% endfor %}
-                        </select>
-                        <button id="clear-filters" class="chip-btn-clear" title="Clear filters">✕</button>
+                    <div class="toolbar-block">
+                        <div class="filter-chips">
+                            <label class="filter-field">
+                                <span>Category</span>
+                                <select id="filter-category" class="chip-select">
+                                    <option value="">All Categories</option>
+                                </select>
+                            </label>
+                            <label class="filter-field">
+                                <span>Subtopic</span>
+                                <select id="filter-subtopic" class="chip-select">
+                                    <option value="">All Subtopics</option>
+                                </select>
+                            </label>
+                            <label class="filter-field">
+                                <span>Mistake Type</span>
+                                <select id="filter-type" class="chip-select">
+                                    <option value="">All Types</option>
+                                    {% for mt in mistake_types %}
+                                    <option value="{{ mt }}">{{ mt }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <button id="clear-filters" class="chip-btn-clear" title="Clear filters">Clear</button>
+                        </div>
                     </div>
                 </section>
 
-                <!-- Analytics Removed -->
-
-                <!-- Mistakes Table -->
                 <section class="table-section">
                     <h2>Your Mistakes <span id="mistake-count" class="count-badge">0</span></h2>
                     <div class="table-container">
                         <table id="mistakes-table">
+                            <colgroup>
+                                <col class="col-date">
+                                <col class="col-category">
+                                <col class="col-subtopic">
+                                <col class="col-question">
+                                <col class="col-solution">
+                                <col class="col-type">
+                                <col class="col-why">
+                                <col class="col-avoid">
+                                <col class="col-actions">
+                            </colgroup>
                             <thead>
                                 <tr>
                                     <th>Date</th>
@@ -101,9 +119,8 @@
             <!-- Tab Content: Add New Mistake -->
             <div id="add-tab" class="tab-content">
                 <section class="form-card">
-                    <h2 class="form-title">Log a New Mistake</h2>
+                    <h2 class="form-title">Add Mistake</h2>
                     <form id="add-form">
-                        <!-- Images Row -->
                         <div class="form-row form-row-images">
                             <div class="form-group">
                                 <label>Question Image <span class="label-hint">(Paste or drop)</span></label>
@@ -135,7 +152,6 @@
                             </div>
                         </div>
 
-                        <!-- Details Row -->
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="new-category">Category *</label>
@@ -170,7 +186,6 @@
                             </div>
                         </div>
 
-                        <!-- Analysis Row -->
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="new-why">Why did this happen? *</label>
