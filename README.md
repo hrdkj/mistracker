@@ -1,4 +1,4 @@
 **Live demo:** [mistracker.onrender.com](https://mistracker.onrender.com/)
 
-<img width="1716" height="1080" alt="image" src="https://github.com/user-attachments/assets/b5cdf3f8-fef6-4299-89d3-f4130301080e" />
-<img width="1718" height="1080" alt="image" src="https://github.com/user-attachments/assets/0eebb2aa-ae0c-4a44-bea7-a7d10bbcf6df" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/574c4161-f975-4313-9465-91a1eb3b07be" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/3a9b9143-00de-4871-a009-e9a3eef8efae" />
