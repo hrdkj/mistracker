@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: mistraker
+    runtime: python
+    buildCommand: pip install flask gunicorn
+    startCommand: gunicorn main:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.10"
+    plan: free
