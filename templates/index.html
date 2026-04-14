@@ -31,6 +31,9 @@
                     <button class="tab-btn" data-tab="add-tab">
                         <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add New
                     </button>
+                    <button class="tab-btn" data-tab="archived-tab">
+                        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg> Archived
+                    </button>
                 </nav>
             </div>
         </header>
@@ -71,6 +74,10 @@
                                 </select>
                             </label>
                             <button id="clear-filters" class="chip-btn-clear" title="Clear filters">Clear</button>
+                            <button id="archive-topic-btn" class="chip-btn-archive" title="Archive an entire topic">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                                Archive Topic
+                            </button>
                         </div>
                     </div>
                 </section>
@@ -203,6 +210,30 @@
                     </form>
                 </section>
             </div>
+
+            <!-- Tab Content: Archived Mistakes -->
+            <div id="archived-tab" class="tab-content">
+                <section class="toolbar">
+                    <div class="toolbar-block">
+                        <div class="search-wrapper">
+                            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                            </svg>
+                            <input type="text" id="archived-search-input" class="search-input" placeholder="Search archived mistakes..." autocomplete="off">
+                        </div>
+                    </div>
+                </section>
+
+                <section class="table-section">
+                    <h2>Archived Topics <span id="archived-count" class="count-badge">0</span></h2>
+                    <div id="archived-folders"></div>
+                    <p id="archived-no-data" class="empty-state hidden">
+                        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                        No archived topics.<br>
+                        <span class="empty-sub">Archive topics you want to set aside from the main view.</span>
+                    </p>
+                </section>
+            </div>
         </main>
     </div>
 
@@ -304,6 +335,31 @@
             <div class="form-actions">
                 <button type="button" class="btn btn-danger" id="confirm-delete">Delete</button>
                 <button type="button" class="btn btn-ghost" id="cancel-delete">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Archive Topic Modal -->
+    <div id="archive-topic-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content archive-topic-modal-content">
+            <button class="modal-close-btn">&#10005;</button>
+            <h2>Archive Topic</h2>
+            <p class="modal-desc">Choose a topic to archive. All mistakes in that topic will be moved to the Archived tab.</p>
+            <div id="archive-topic-list" class="archive-topic-list"></div>
+        </div>
+    </div>
+
+    <!-- Restore Topic Modal -->
+    <div id="restore-topic-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content delete-modal-content">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+            <h2>Restore Topic?</h2>
+            <p id="restore-topic-msg">All mistakes in this topic will be moved back to active.</p>
+            <div class="form-actions">
+                <button type="button" class="btn btn-primary" id="confirm-restore-topic">Restore</button>
+                <button type="button" class="btn btn-ghost" id="cancel-restore-topic">Cancel</button>
             </div>
         </div>
     </div>

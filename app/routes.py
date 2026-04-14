@@ -23,9 +23,19 @@ def get_mistakes():
     category = request.args.get("category") or request.args.get("topic")
     subtopic = request.args.get("subtopic")
     mistake_type = request.args.get("mistake_type")
+    archived_param = request.args.get("archived")
+
+    archived = None
+    if archived_param == "true":
+        archived = True
+    elif archived_param == "false":
+        archived = False
 
     mistakes = models.get_all_mistakes(
-        category=category, subtopic=subtopic, mistake_type=mistake_type
+        category=category,
+        subtopic=subtopic,
+        mistake_type=mistake_type,
+        archived=archived,
     )
     return jsonify(mistakes)
 
@@ -71,10 +81,54 @@ def delete_mistake(mistake_id):
     return jsonify({"error": "Mistake not found"}), 404
 
 
+@bp.route("/api/mistakes/<mistake_id>/archive", methods=["PATCH"])
+def archive_mistake(mistake_id):
+    """Archive a mistake."""
+    mistake = models.archive_mistake(mistake_id)
+    if mistake:
+        return jsonify(mistake)
+    return jsonify({"error": "Mistake not found"}), 404
+
+
+@bp.route("/api/mistakes/<mistake_id>/unarchive", methods=["PATCH"])
+def unarchive_mistake(mistake_id):
+    """Unarchive a mistake."""
+    mistake = models.unarchive_mistake(mistake_id)
+    if mistake:
+        return jsonify(mistake)
+    return jsonify({"error": "Mistake not found"}), 404
+
+
+@bp.route("/api/mistakes/archive-category", methods=["POST"])
+def archive_category():
+    """Archive all mistakes in a category."""
+    data = request.get_json()
+    if not data or not data.get("category"):
+        return jsonify({"error": "Category is required"}), 400
+    count = models.archive_category(data["category"])
+    return jsonify({"archived": count})
+
+
+@bp.route("/api/mistakes/unarchive-category", methods=["POST"])
+def unarchive_category():
+    """Unarchive all mistakes in a category."""
+    data = request.get_json()
+    if not data or not data.get("category"):
+        return jsonify({"error": "Category is required"}), 400
+    count = models.unarchive_category(data["category"])
+    return jsonify({"unarchived": count})
+
+
 @bp.route("/api/categories", methods=["GET"])
 def get_categories():
     """Get all unique categories."""
-    categories = models.get_all_categories()
+    archived_param = request.args.get("archived")
+    archived = None
+    if archived_param == "true":
+        archived = True
+    elif archived_param == "false":
+        archived = False
+    categories = models.get_all_categories(archived=archived)
     return jsonify(categories)
 
 
@@ -82,14 +136,26 @@ def get_categories():
 def get_subtopics():
     """Get all unique subtopics, optionally filtered by category."""
     category = request.args.get("category") or request.args.get("topic")
-    subtopics = models.get_all_subtopics(category=category)
+    archived_param = request.args.get("archived")
+    archived = None
+    if archived_param == "true":
+        archived = True
+    elif archived_param == "false":
+        archived = False
+    subtopics = models.get_all_subtopics(category=category, archived=archived)
     return jsonify(subtopics)
 
 
 @bp.route("/api/topics", methods=["GET"])
 def get_topics():
     """Backward-compatible alias for categories."""
-    topics = models.get_all_categories()
+    archived_param = request.args.get("archived")
+    archived = None
+    if archived_param == "true":
+        archived = True
+    elif archived_param == "false":
+        archived = False
+    topics = models.get_all_categories(archived=archived)
     return jsonify(topics)
 
 

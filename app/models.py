@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS mistakes (
     why_happened  TEXT NOT NULL DEFAULT '',
     how_to_avoid  TEXT NOT NULL DEFAULT '',
     date_added    TEXT NOT NULL DEFAULT '',
-    date_modified TEXT NOT NULL DEFAULT ''
+    date_modified TEXT NOT NULL DEFAULT '',
+    archived      INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -51,6 +52,12 @@ def init_db() -> None:
     os.makedirs(IMAGES_DIR, exist_ok=True)
     conn = _get_conn()
     conn.execute(CREATE_TABLE)
+    try:
+        conn.execute(
+            "ALTER TABLE mistakes ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
+        )
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -99,11 +106,19 @@ def get_all_mistakes(
     category: Optional[str] = None,
     subtopic: Optional[str] = None,
     mistake_type: Optional[str] = None,
+    archived: Optional[bool] = None,
 ) -> list[dict]:
-    """Get all mistakes, optionally filtered."""
+    """Get all mistakes, optionally filtered.
+
+    archived: None = all, False = active only, True = archived only
+    """
     conn = _get_conn()
     query = "SELECT * FROM mistakes WHERE 1=1"
     params: list = []
+
+    if archived is not None:
+        query += " AND archived = ?"
+        params.append(1 if archived else 0)
 
     if category:
         query += " AND LOWER(category) = LOWER(?)"
@@ -120,7 +135,6 @@ def get_all_mistakes(
 
     results = [_row_to_dict(r) for r in rows]
 
-    # Subtopic filtering needs JSON list parsing, do in Python
     if subtopic:
         subtopic_lower = subtopic.lower()
         results = [
@@ -203,12 +217,22 @@ def update_mistake(mistake_id: str, data: dict) -> Optional[dict]:
     else:
         subtopics = existing["subtopics"]
 
-    concept = _normalized_text(data["concept"]) if "concept" in data else existing["concept"]
+    concept = (
+        _normalized_text(data["concept"]) if "concept" in data else existing["concept"]
+    )
     question_image = data.get("question_image", existing["question_image"])
     solution_image = data.get("solution_image", existing["solution_image"])
     mistake_type = data.get("mistake_type", existing["mistake_type"])
-    why_happened = data["why_happened"].strip() if "why_happened" in data else existing["why_happened"]
-    how_to_avoid = data["how_to_avoid"].strip() if "how_to_avoid" in data else existing["how_to_avoid"]
+    why_happened = (
+        data["why_happened"].strip()
+        if "why_happened" in data
+        else existing["why_happened"]
+    )
+    how_to_avoid = (
+        data["how_to_avoid"].strip()
+        if "how_to_avoid" in data
+        else existing["how_to_avoid"]
+    )
 
     conn = _get_conn()
     conn.execute(
@@ -263,21 +287,39 @@ def delete_mistake(mistake_id: str) -> bool:
     return True
 
 
-def get_all_categories() -> list[str]:
+def get_all_categories(archived: Optional[bool] = None) -> list[str]:
     conn = _get_conn()
-    rows = conn.execute(
-        "SELECT DISTINCT category FROM mistakes WHERE category != '' ORDER BY category"
-    ).fetchall()
+    if archived is not None:
+        rows = conn.execute(
+            "SELECT DISTINCT category FROM mistakes WHERE category != '' AND archived = ? ORDER BY category",
+            (1 if archived else 0,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT DISTINCT category FROM mistakes WHERE category != '' ORDER BY category"
+        ).fetchall()
     conn.close()
     return [r["category"] for r in rows]
 
 
-def get_all_subtopics(category: Optional[str] = None) -> list[str]:
+def get_all_subtopics(
+    category: Optional[str] = None, archived: Optional[bool] = None
+) -> list[str]:
     conn = _get_conn()
-    if category:
+    if category and archived is not None:
+        rows = conn.execute(
+            "SELECT subtopics FROM mistakes WHERE LOWER(category) = LOWER(?) AND archived = ?",
+            (category, 1 if archived else 0),
+        ).fetchall()
+    elif category:
         rows = conn.execute(
             "SELECT subtopics FROM mistakes WHERE LOWER(category) = LOWER(?)",
             (category,),
+        ).fetchall()
+    elif archived is not None:
+        rows = conn.execute(
+            "SELECT subtopics FROM mistakes WHERE archived = ?",
+            (1 if archived else 0,),
         ).fetchall()
     else:
         rows = conn.execute("SELECT subtopics FROM mistakes").fetchall()
@@ -296,9 +338,63 @@ def get_all_subtopics(category: Optional[str] = None) -> list[str]:
     return sorted(list(all_subtopics))
 
 
+def archive_mistake(mistake_id: str) -> Optional[dict]:
+    existing = get_mistake_by_id(mistake_id)
+    if not existing:
+        return None
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE mistakes SET archived = 1, date_modified = ? WHERE id = ?",
+        (datetime.now().isoformat(), mistake_id),
+    )
+    conn.commit()
+    conn.close()
+    return get_mistake_by_id(mistake_id)
+
+
+def unarchive_mistake(mistake_id: str) -> Optional[dict]:
+    existing = get_mistake_by_id(mistake_id)
+    if not existing:
+        return None
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE mistakes SET archived = 0, date_modified = ? WHERE id = ?",
+        (datetime.now().isoformat(), mistake_id),
+    )
+    conn.commit()
+    conn.close()
+    return get_mistake_by_id(mistake_id)
+
+
+def archive_category(category: str) -> int:
+    conn = _get_conn()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        "UPDATE mistakes SET archived = 1, date_modified = ? WHERE LOWER(category) = LOWER(?) AND archived = 0",
+        (now, category),
+    )
+    conn.commit()
+    count = cursor.rowcount
+    conn.close()
+    return count
+
+
+def unarchive_category(category: str) -> int:
+    conn = _get_conn()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        "UPDATE mistakes SET archived = 0, date_modified = ? WHERE LOWER(category) = LOWER(?) AND archived = 1",
+        (now, category),
+    )
+    conn.commit()
+    count = cursor.rowcount
+    conn.close()
+    return count
+
+
 def get_analytics() -> dict:
     conn = _get_conn()
-    rows = conn.execute("SELECT * FROM mistakes").fetchall()
+    rows = conn.execute("SELECT * FROM mistakes WHERE archived = 0").fetchall()
     conn.close()
 
     mistakes = [_row_to_dict(r) for r in rows]
@@ -326,7 +422,9 @@ def get_analytics() -> dict:
             key = f"{category} - Unspecified"
             subtopic_counts[key] = subtopic_counts.get(key, 0) + 1
 
-    sorted_categories = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
+    sorted_categories = sorted(
+        category_counts.items(), key=lambda x: x[1], reverse=True
+    )
     sorted_subtopics = sorted(subtopic_counts.items(), key=lambda x: x[1], reverse=True)
 
     return {

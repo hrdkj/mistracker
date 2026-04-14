@@ -2,11 +2,14 @@
 
 // State
 let mistakes = [];
+let archivedMistakes = [];
 let categories = [];
 let subtopics = [];
 let currentFilters = { category: '', subtopic: '', mistake_type: '' };
 let searchQuery = '';
+let archivedSearchQuery = '';
 let deleteTargetId = null;
+let restoreTopicName = null;
 
 let didHydrateLastEntryFromMistakes = false;
 
@@ -20,6 +23,14 @@ const filterCategory = document.getElementById('filter-category');
 const filterSubtopic = document.getElementById('filter-subtopic');
 const filterType = document.getElementById('filter-type');
 const clearFiltersBtn = document.getElementById('clear-filters');
+
+const archivedFolders = document.getElementById('archived-folders');
+const archivedCountEl = document.getElementById('archived-count');
+const archivedNoData = document.getElementById('archived-no-data');
+const archivedSearchInput = document.getElementById('archived-search-input');
+const archiveTopicBtn = document.getElementById('archive-topic-btn');
+const archiveTopicModal = document.getElementById('archive-topic-modal');
+const restoreTopicModal = document.getElementById('restore-topic-modal');
 
 const searchInput = document.getElementById('search-input');
 const addForm = document.getElementById('add-form');
@@ -64,6 +75,7 @@ const editSolutionPasteHint = editSolutionPasteZone.querySelector('.paste-hint')
 // ── Initialise ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     loadMistakes();
+    loadArchivedMistakes();
     loadCategories();
     loadSubtopics();
     setupEventListeners();
@@ -88,6 +100,7 @@ function showToast(message, type = 'success') {
 // ── API Functions ─────────────────────────────────────────────────
 async function loadMistakes() {
     const params = new URLSearchParams();
+    params.append('archived', 'false');
     if (currentFilters.category) params.append('category', currentFilters.category);
     if (currentFilters.subtopic) params.append('subtopic', currentFilters.subtopic);
     if (currentFilters.mistake_type) params.append('mistake_type', currentFilters.mistake_type);
@@ -145,14 +158,24 @@ function hydrateLastEntryDetailsFromMistakes() {
 }
 
 async function loadCategories() {
-    const response = await fetch('/api/categories');
+    const response = await fetch('/api/categories?archived=false');
     categories = await response.json();
     renderCategoryFilter();
     renderCategorySuggestions();
 }
 
+async function loadArchivedMistakes() {
+    const params = new URLSearchParams();
+    params.append('archived', 'true');
+
+    const response = await fetch(`/api/mistakes?${params}`);
+    archivedMistakes = await response.json();
+    renderArchivedFolders();
+}
+
 async function loadSubtopics(category = '') {
     const params = new URLSearchParams();
+    params.append('archived', 'false');
     if (category) params.append('category', category);
     const response = await fetch(`/api/subtopics?${params}`);
     subtopics = await response.json();
@@ -161,6 +184,7 @@ async function loadSubtopics(category = '') {
 
 async function fetchSubtopicsByCategory(category = '') {
     const params = new URLSearchParams();
+    params.append('archived', 'false');
     if (category) params.append('category', category);
     const response = await fetch(`/api/subtopics?${params}`);
     return response.json();
@@ -235,6 +259,16 @@ async function apiDeleteMistake(id) {
     return response.json();
 }
 
+async function apiArchiveMistake(id) {
+    const response = await fetch(`/api/mistakes/${id}/archive`, { method: 'PATCH' });
+    return response.json();
+}
+
+async function apiUnarchiveMistake(id) {
+    const response = await fetch(`/api/mistakes/${id}/unarchive`, { method: 'PATCH' });
+    return response.json();
+}
+
 // ── Upload image via /api/upload ──────────────────────────────────
 async function uploadImageFile(file) {
     const formData = new FormData();
@@ -284,6 +318,7 @@ function renderTable() {
             <td data-label="Actions">
                 <div class="action-btns">
                     <button class="card-action-btn edit-btn" data-id="${m.id}" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+                    <button class="card-action-btn archive-btn" data-id="${m.id}" title="Archive"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg></button>
                     <button class="card-action-btn delete-btn" data-id="${m.id}" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
                 </div>
             </td>
@@ -293,6 +328,10 @@ function renderTable() {
 
     mistakesTable.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', () => openEditModal(btn.dataset.id));
+    });
+
+    mistakesTable.querySelectorAll('.archive-btn').forEach(btn => {
+        btn.addEventListener('click', () => handleArchive(btn.dataset.id));
     });
 
     mistakesTable.querySelectorAll('.delete-btn').forEach(btn => {
@@ -349,6 +388,152 @@ function renderCategorySuggestions() {
             const option = document.createElement('option');
             option.value = c;
             list.appendChild(option);
+        });
+    });
+}
+
+function renderArchivedFolders() {
+    archivedFolders.innerHTML = '';
+
+    let grouped = {};
+    archivedMistakes.forEach(m => {
+        const cat = m.category || m.topic || 'Uncategorized';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(m);
+    });
+
+    if (archivedSearchQuery) {
+        const q = archivedSearchQuery.toLowerCase();
+        const filtered = {};
+        for (const [cat, items] of Object.entries(grouped)) {
+            const matching = items.filter(m =>
+                (m.category || '').toLowerCase().includes(q) ||
+                (m.subtopic || '').toLowerCase().includes(q) ||
+                (m.concept || '').toLowerCase().includes(q) ||
+                (m.why_happened || '').toLowerCase().includes(q) ||
+                (m.how_to_avoid || '').toLowerCase().includes(q) ||
+                (m.mistake_type || '').toLowerCase().includes(q)
+            );
+            if (matching.length > 0) filtered[cat] = matching;
+        }
+        grouped = filtered;
+    }
+
+    const categoryNames = Object.keys(grouped).sort();
+
+    if (categoryNames.length === 0) {
+        archivedNoData.classList.remove('hidden');
+        if (archivedCountEl) archivedCountEl.textContent = '0';
+        return;
+    }
+    archivedNoData.classList.add('hidden');
+    const totalArchived = Object.values(grouped).reduce((sum, arr) => sum + arr.length, 0);
+    if (archivedCountEl) archivedCountEl.textContent = totalArchived;
+
+    categoryNames.forEach(cat => {
+        const items = grouped[cat];
+        const folder = document.createElement('div');
+        folder.className = 'archive-folder';
+
+        const header = document.createElement('div');
+        header.className = 'archive-folder-header';
+        header.innerHTML = `
+            <div class="archive-folder-info">
+                <svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span class="archive-folder-name">${escapeHtml(cat)}</span>
+                <span class="count-badge">${items.length}</span>
+            </div>
+            <div class="archive-folder-actions">
+                <button class="btn btn-sm btn-restore" data-category="${escapeHtml(cat)}" title="Restore all mistakes in this topic">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                    Restore All
+                </button>
+                <svg class="folder-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+        `;
+
+        const content = document.createElement('div');
+        content.className = 'archive-folder-content hidden';
+        const tableContainer = document.createElement('div');
+        tableContainer.className = 'table-container';
+
+        const table = document.createElement('table');
+        table.className = 'archive-folder-table';
+        table.innerHTML = `
+            <colgroup>
+                <col class="col-date">
+                <col class="col-subtopic">
+                <col class="col-question">
+                <col class="col-solution">
+                <col class="col-type">
+                <col class="col-why">
+                <col class="col-avoid">
+                <col class="col-actions">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Subtopic</th>
+                    <th>Question</th>
+                    <th>Solution</th>
+                    <th>Type</th>
+                    <th>Why</th>
+                    <th>Avoid</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+        `;
+
+        const tbody = document.createElement('tbody');
+        items.forEach(m => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td data-label="Date">${formatDate(m.date_added)}</td>
+                <td data-label="Subtopic">${escapeHtml(m.subtopic || '')}</td>
+                <td data-label="Question">${renderThumbnail(m.question_image, m.id, 'question')}</td>
+                <td data-label="Solution">${renderThumbnail(m.solution_image, m.id, 'solution')}</td>
+                <td data-label="Type">${renderMistakeType(m.mistake_type)}</td>
+                <td data-label="Why">${escapeHtml(m.why_happened)}</td>
+                <td data-label="Avoid">${escapeHtml(m.how_to_avoid)}</td>
+                <td data-label="Actions">
+                    <div class="action-btns">
+                        <button class="card-action-btn unarchive-btn" data-id="${m.id}" title="Restore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></button>
+                        <button class="card-action-btn delete-btn" data-id="${m.id}" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        table.appendChild(tbody);
+        tableContainer.appendChild(table);
+        content.appendChild(tableContainer);
+        folder.appendChild(header);
+        folder.appendChild(content);
+        archivedFolders.appendChild(folder);
+
+        header.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-restore')) return;
+            content.classList.toggle('hidden');
+            const chevron = header.querySelector('.folder-chevron');
+            chevron.style.transform = content.classList.contains('hidden') ? '' : 'rotate(180deg)';
+        });
+
+        header.querySelector('.btn-restore').addEventListener('click', (e) => {
+            e.stopPropagation();
+            openRestoreTopicModal(cat);
+        });
+
+        tbody.querySelectorAll('.unarchive-btn').forEach(btn => {
+            btn.addEventListener('click', () => handleUnarchive(btn.dataset.id));
+        });
+
+        tbody.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => openDeleteModal(btn.dataset.id));
+        });
+
+        tbody.querySelectorAll('.card-thumb').forEach(img => {
+            img.addEventListener('click', () => openImageModal(img.dataset.src));
         });
     });
 }
@@ -414,6 +599,19 @@ function setupEventListeners() {
         loadSubtopics();
         loadMistakes();
     });
+
+    // Archived tab search
+    let archivedSearchTimer;
+    archivedSearchInput.addEventListener('input', () => {
+        clearTimeout(archivedSearchTimer);
+        archivedSearchTimer = setTimeout(() => {
+            archivedSearchQuery = archivedSearchInput.value.trim();
+            renderArchivedFolders();
+        }, 200);
+    });
+
+    // Archive topic modal
+    archiveTopicBtn.addEventListener('click', openArchiveTopicModal);
 
 
     // Add form
@@ -483,9 +681,17 @@ function setupEventListeners() {
             loadMistakes();
             loadCategories();
             loadSubtopics();
+            loadArchivedMistakes();
         }
     });
     document.getElementById('cancel-delete').addEventListener('click', closeDeleteModal);
+
+    document.getElementById('confirm-restore-topic').addEventListener('click', () => {
+        if (restoreTopicName) {
+            handleRestoreTopic(restoreTopicName);
+        }
+    });
+    document.getElementById('cancel-restore-topic').addEventListener('click', closeRestoreTopicModal);
 
     // Modal close buttons + overlay clicks
     document.querySelectorAll('.modal-close-btn').forEach(btn => {
@@ -690,6 +896,95 @@ function clearEditPastedSolutionImage() {
     editSolutionPasteHint.classList.remove('hidden');
 }
 
+// ── Archive / Unarchive ────────────────────────────────────────────
+async function handleArchive(id) {
+    await apiArchiveMistake(id);
+    showToast('Mistake archived', 'info');
+    loadMistakes();
+    loadCategories();
+    loadSubtopics();
+    loadArchivedMistakes();
+}
+
+async function handleUnarchive(id) {
+    await apiUnarchiveMistake(id);
+    showToast('Mistake restored', 'success');
+    loadMistakes();
+    loadCategories();
+    loadSubtopics();
+    loadArchivedMistakes();
+}
+
+async function handleArchiveTopic(category) {
+    await fetch('/api/mistakes/archive-category', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category })
+    });
+    showToast(`"${category}" archived`, 'info');
+    closeArchiveTopicModal();
+    loadMistakes();
+    loadCategories();
+    loadSubtopics();
+    loadArchivedMistakes();
+}
+
+async function handleRestoreTopic(category) {
+    await fetch('/api/mistakes/unarchive-category', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category })
+    });
+    showToast(`"${category}" restored`, 'success');
+    closeRestoreTopicModal();
+    loadMistakes();
+    loadCategories();
+    loadSubtopics();
+    loadArchivedMistakes();
+}
+
+function openArchiveTopicModal() {
+    const list = document.getElementById('archive-topic-list');
+    list.innerHTML = '';
+    if (categories.length === 0) {
+        list.innerHTML = '<p class="modal-desc">No active topics to archive.</p>';
+    } else {
+        categories.forEach(cat => {
+            const count = mistakes.filter(m => (m.category || m.topic || '').toLowerCase() === cat.toLowerCase()).length;
+            const item = document.createElement('div');
+            item.className = 'archive-topic-item';
+            item.innerHTML = `
+                <div class="archive-topic-item-info">
+                    <svg class="folder-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                    <span class="archive-topic-item-name">${escapeHtml(cat)}</span>
+                    <span class="count-badge">${count}</span>
+                </div>
+                <button class="btn btn-sm btn-archive-topic" data-category="${escapeHtml(cat)}">Archive</button>
+            `;
+            list.appendChild(item);
+            item.querySelector('.btn-archive-topic').addEventListener('click', () => {
+                handleArchiveTopic(cat);
+            });
+        });
+    }
+    archiveTopicModal.classList.remove('hidden');
+}
+
+function closeArchiveTopicModal() {
+    archiveTopicModal.classList.add('hidden');
+}
+
+function openRestoreTopicModal(category) {
+    restoreTopicName = category;
+    document.getElementById('restore-topic-msg').textContent = `All mistakes in "${category}" will be moved back to active.`;
+    restoreTopicModal.classList.remove('hidden');
+}
+
+function closeRestoreTopicModal() {
+    restoreTopicName = null;
+    restoreTopicModal.classList.add('hidden');
+}
+
 // ── Modal Functions ───────────────────────────────────────────────
 function openEditModal(id) {
     const m = mistakes.find(x => x.id === id);
@@ -778,4 +1073,7 @@ function switchTab(tabId) {
     tabContents.forEach(content => {
         content.classList.toggle('active', content.id === tabId);
     });
+    if (tabId === 'archived-tab') {
+        loadArchivedMistakes();
+    }
 }
