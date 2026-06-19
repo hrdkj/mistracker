@@ -42,43 +42,39 @@
             <!-- Tab Content: Your Mistakes -->
             <div id="mistakes-tab" class="tab-content active">
                 <section class="toolbar">
-                    <div class="toolbar-block">
-                        <div class="search-wrapper">
-                            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                            </svg>
-                            <input type="text" id="search-input" class="search-input" placeholder="Search category, subtopic, reason, or mistake type" autocomplete="off">
-                        </div>
+                    <div class="search-wrapper">
+                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        <input type="text" id="search-input" class="search-input" placeholder="Search category, subtopic, reason, or mistake type" autocomplete="off">
                     </div>
-                    <div class="toolbar-block">
-                        <div class="filter-chips">
-                            <label class="filter-field">
-                                <span>Category</span>
-                                <select id="filter-category" class="chip-select">
-                                    <option value="">All Categories</option>
-                                </select>
-                            </label>
-                            <label class="filter-field">
-                                <span>Subtopic</span>
-                                <select id="filter-subtopic" class="chip-select">
-                                    <option value="">All Subtopics</option>
-                                </select>
-                            </label>
-                            <label class="filter-field">
-                                <span>Mistake Type</span>
-                                <select id="filter-type" class="chip-select">
-                                    <option value="">All Types</option>
-                                    {% for mt in mistake_types %}
-                                    <option value="{{ mt }}">{{ mt }}</option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            <button id="clear-filters" class="chip-btn-clear" title="Clear filters">Clear</button>
-                            <button id="archive-topic-btn" class="chip-btn-archive" title="Archive an entire topic">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
-                                Archive Topic
-                            </button>
-                        </div>
+                    <div class="filter-chips">
+                        <label class="filter-field">
+                            <span>Category</span>
+                            <select id="filter-category" class="chip-select">
+                                <option value="">All Categories</option>
+                            </select>
+                        </label>
+                        <label class="filter-field">
+                            <span>Subtopic</span>
+                            <select id="filter-subtopic" class="chip-select">
+                                <option value="">All Subtopics</option>
+                            </select>
+                        </label>
+                        <label class="filter-field">
+                            <span>Mistake Type</span>
+                            <select id="filter-type" class="chip-select">
+                                <option value="">All Types</option>
+                                {% for mt in mistake_types %}
+                                <option value="{{ mt }}">{{ mt }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <button id="clear-filters" class="chip-btn-clear" title="Clear filters">Clear</button>
+                        <button id="archive-topic-btn" class="chip-btn-archive" title="Archive an entire topic">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                            Archive Topic
+                        </button>
                     </div>
                 </section>
 

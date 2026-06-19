@@ -3,7 +3,7 @@ name = "mistraker"
 version = "0.1.0"
 description = "A local website to track study mistakes and improve learning"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "flask>=3.0.0",
     "gunicorn>=21.0.0",
