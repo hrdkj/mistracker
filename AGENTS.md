@@ -8,9 +8,6 @@ Local Flask web app for tracking study mistakes. Single-package Python app using
 # Run the dev server
 uv run python main.py
 # → Serves on http://127.0.0.1:5000
-
-# Run the one-time JSON→SQLite migration (only if data/mistakes.json exists)
-uv run python migrate.py
 ```
 
 There are no tests, lint, typecheck, or CI configs.

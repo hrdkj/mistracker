@@ -1,4 +1,22 @@
-**Live demo:** [mistracker.onrender.com](https://mistracker.onrender.com/)
+# Mistraker
 
-<img width="1715" height="1080" alt="image" src="https://github.com/user-attachments/assets/28b48a1e-63a2-4f81-8a07-e9727d0b9cf5" />
-<img width="1715" height="1080" alt="image" src="https://github.com/user-attachments/assets/04cc059e-a310-4201-bc0d-a72f4d0c8b23" />
+Local Flask web app for tracking study mistakes.
+
+## Quick start
+
+```sh
+git clone <repo-url>
+cd mistraker
+uv run python main.py
+```
+
+Opens at [http://127.0.0.1:5000](http://127.0.0.1:5000). The SQLite database is created automatically on first run.
+
+### Prerequisites
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) (install: `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+
+## License
+
+MIT
