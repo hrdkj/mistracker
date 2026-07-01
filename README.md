@@ -1,6 +1,6 @@
-# Mistraker
+# Mistracker
 
-Local Flask web app for tracking study mistakes.
+Your mistakes, indexed and searchable.
 
 ## Quick start
 
