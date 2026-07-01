@@ -281,14 +281,14 @@ table {
 }
 
 #mistakes-table .col-date { width: 7%; }
-#mistakes-table .col-category { width: 11%; }
-#mistakes-table .col-subtopic { width: 11%; }
-#mistakes-table .col-question { width: 6%; }
-#mistakes-table .col-solution { width: 6%; }
+#mistakes-table .col-category { width: 8%; }
+#mistakes-table .col-subtopic { width: 8%; }
+#mistakes-table .col-question { width: 7%; }
+#mistakes-table .col-solution { width: 7%; }
 #mistakes-table .col-type { width: 11%; }
-#mistakes-table .col-why { width: 20%; }
-#mistakes-table .col-avoid { width: 22%; }
-#mistakes-table .col-actions { width: 6%; }
+#mistakes-table .col-why { width: 22%; }
+#mistakes-table .col-avoid { width: 23%; }
+#mistakes-table .col-actions { width: 7%; }
 
 thead {
   background: var(--surface-2);

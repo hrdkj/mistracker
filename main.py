@@ -4,7 +4,7 @@ from app import create_app
 
 app = create_app()
 
-PORT = int(os.environ.get("PORT", 9090))
+PORT = int(os.environ.get("PORT", 8111))
 
 
 def main():
