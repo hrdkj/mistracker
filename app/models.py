@@ -1,11 +1,15 @@
 import json
 import os
 import sqlite3
+import struct
 import uuid
-from datetime import datetime
+import zlib
+from datetime import datetime, timedelta
 from typing import Optional
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+DATA_DIR = os.environ.get("MISTRACKER_DATA_DIR") or os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "data"
+)
 DB_FILE = os.path.join(DATA_DIR, "mistraker.db")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 
@@ -77,6 +81,10 @@ def _normalized_text(value: Optional[str]) -> str:
     if not value:
         return ""
     return str(value).strip()
+
+
+def _safe_mistake_type(value, fallback: str = "Conceptual") -> str:
+    return value if value in MISTAKE_TYPES else fallback
 
 
 def _parse_subtopics(value) -> list[str]:
@@ -182,11 +190,11 @@ def add_mistake(data: dict) -> dict:
             ", ".join(subtopics),
             concept,
             category,
-            data.get("question_image", ""),
-            data.get("solution_image", ""),
-            data.get("mistake_type", "Conceptual"),
-            data.get("why_happened", "").strip(),
-            data.get("how_to_avoid", "").strip(),
+            _normalized_text(data.get("question_image")),
+            _normalized_text(data.get("solution_image")),
+            _safe_mistake_type(data.get("mistake_type", "Conceptual")),
+            _normalized_text(data.get("why_happened")),
+            _normalized_text(data.get("how_to_avoid")),
             now,
             now,
         ),
@@ -223,13 +231,18 @@ def update_mistake(mistake_id: str, data: dict) -> Optional[dict]:
     question_image = data.get("question_image", existing["question_image"])
     solution_image = data.get("solution_image", existing["solution_image"])
     mistake_type = data.get("mistake_type", existing["mistake_type"])
+    mistake_type = (
+        _safe_mistake_type(mistake_type, existing["mistake_type"])
+        if "mistake_type" in data
+        else existing["mistake_type"]
+    )
     why_happened = (
-        data["why_happened"].strip()
+        _normalized_text(data["why_happened"])
         if "why_happened" in data
         else existing["why_happened"]
     )
     how_to_avoid = (
-        data["how_to_avoid"].strip()
+        _normalized_text(data["how_to_avoid"])
         if "how_to_avoid" in data
         else existing["how_to_avoid"]
     )
@@ -436,3 +449,142 @@ def get_analytics() -> dict:
         if type_counts
         else None,
     }
+
+
+# ── Demo seed data ───────────────────────────────────────────────────
+
+
+def _placeholder_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
+    """Build a minimal solid-color PNG (no external dependencies)."""
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    row = b"\x00" + bytes(rgb) * width
+    raw = row * height
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+
+
+DEMO_MISTAKES = [
+    {
+        "category": "Linear Algebra",
+        "subtopics": ["Basis", "Dimension"],
+        "concept": "Rank-nullity application",
+        "mistake_type": "Conceptual",
+        "why_happened": "Assumed rank equals the number of columns without checking for independence.",
+        "how_to_avoid": "Row-reduce first, then reason about rank.",
+    },
+    {
+        "category": "Calculus",
+        "subtopics": ["Chain Rule"],
+        "concept": "Composite derivative with trig",
+        "mistake_type": "Silly/Careless",
+        "why_happened": "Forgot to multiply by the inner derivative.",
+        "how_to_avoid": "Write u-substitution explicitly before differentiating.",
+    },
+    {
+        "category": "Calculus",
+        "subtopics": ["Integration", "Substitution"],
+        "concept": "Definite integral bounds after substitution",
+        "mistake_type": "Misread Question",
+        "why_happened": "Kept original bounds after substituting variables.",
+        "how_to_avoid": "Convert bounds immediately when substituting.",
+    },
+    {
+        "category": "Probability",
+        "subtopics": ["Combinatorics"],
+        "concept": "nCr vs nPr in counting problems",
+        "mistake_type": "Memory/Formula",
+        "why_happened": "Used permutations where order did not matter.",
+        "how_to_avoid": "Ask 'does order matter?' before choosing a formula.",
+    },
+    {
+        "category": "Probability",
+        "subtopics": ["Conditional Probability"],
+        "concept": "Bayes theorem setup",
+        "mistake_type": "Conceptual",
+        "why_happened": "Swapped prior and likelihood in the numerator.",
+        "how_to_avoid": "Label events and write Bayes table before computing.",
+    },
+    {
+        "category": "Physics",
+        "subtopics": ["Kinematics"],
+        "concept": "Sign convention in projectile motion",
+        "mistake_type": "Calculation",
+        "why_happened": "Mixed up positive direction midway through the problem.",
+        "how_to_avoid": "Draw axes and mark sign conventions at the start.",
+    },
+    {
+        "category": "Physics",
+        "subtopics": ["Kinematics", "Energy"],
+        "concept": "Work-energy theorem under friction",
+        "mistake_type": "Time Pressure",
+        "why_happened": "Rushed the free-body diagram and dropped the friction term.",
+        "how_to_avoid": "Budget two minutes for setup; never skip FBDs.",
+    },
+]
+
+
+def seed_demo(force: bool = False) -> bool:
+    """Populate an empty database with sample mistakes for demos.
+
+    Returns True if demo data was inserted.
+    """
+    conn = _get_conn()
+    try:
+        count = conn.execute("SELECT COUNT(*) AS n FROM mistakes").fetchone()["n"]
+        if count and not force:
+            return False
+
+        os.makedirs(IMAGES_DIR, exist_ok=True)
+        question_png = _placeholder_png(320, 180, (59, 130, 246))
+        solution_png = _placeholder_png(320, 180, (16, 185, 129))
+        base_time = datetime.now()
+
+        for i, entry in enumerate(DEMO_MISTAKES):
+            q_name = f"{uuid.uuid4().hex[:16]}.png"
+            s_name = f"{uuid.uuid4().hex[:16]}.png"
+            with open(os.path.join(IMAGES_DIR, q_name), "wb") as f:
+                f.write(question_png)
+            with open(os.path.join(IMAGES_DIR, s_name), "wb") as f:
+                f.write(solution_png)
+
+            subtopics = _parse_subtopics(entry["subtopics"])
+            added_at = (base_time - timedelta(days=len(DEMO_MISTAKES) - i)).isoformat()
+            conn.execute(
+                """INSERT INTO mistakes
+                   (id, category, subtopics, subtopic, concept, topic,
+                    question_image, solution_image, mistake_type,
+                    why_happened, how_to_avoid, date_added, date_modified)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(uuid.uuid4()),
+                    entry["category"],
+                    json.dumps(subtopics),
+                    ", ".join(subtopics),
+                    entry["concept"],
+                    entry["category"],
+                    f"/api/images/{q_name}",
+                    f"/api/images/{s_name}",
+                    entry["mistake_type"],
+                    entry["why_happened"],
+                    entry["how_to_avoid"],
+                    added_at,
+                    added_at,
+                ),
+            )
+        conn.commit()
+        return True
+    finally:
+        conn.close()

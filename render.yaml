@@ -1,10 +1,12 @@
+# Hosted demo: a static site (Render static runtime never sleeps,
+# unlike the previous Python web service — this is why it now loads
+# instantly instead of ~60s after idle).
+#
+# The build renders the real Jinja template and bakes in sample data;
+# demo/demo-mode.js mocks the API in-browser, so writes reset on reload.
 services:
   - type: web
-    name: mistraker
-    runtime: python
-    buildCommand: pip install flask gunicorn
-    startCommand: gunicorn main:app --bind 0.0.0.0:$PORT
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.10"
-    plan: free
+    name: mistraker-demo
+    runtime: static
+    buildCommand: pip install flask && python build_demo.py
+    staticPublishPath: ./dist-demo

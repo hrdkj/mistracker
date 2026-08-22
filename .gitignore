@@ -15,3 +15,6 @@ data/*.db-wal
 data/*.db-shm
 data/images/
 data/*.json.bak
+
+# Generated static demo (built by build_demo.py)
+dist-demo/

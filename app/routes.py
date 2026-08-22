@@ -43,7 +43,7 @@ def get_mistakes():
 @bp.route("/api/mistakes", methods=["POST"])
 def add_mistake():
     """Add a new mistake."""
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
@@ -63,7 +63,7 @@ def get_mistake(mistake_id):
 @bp.route("/api/mistakes/<mistake_id>", methods=["PUT"])
 def update_mistake(mistake_id):
     """Update an existing mistake."""
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
@@ -206,13 +206,18 @@ def upload_image():
         if not image_data.startswith("data:image"):
             return jsonify({"error": "Invalid image data"}), 400
 
-        header, payload = image_data.split(",", 1)
+        try:
+            header, payload = image_data.split(",", 1)
+            raw = base64.b64decode(payload)
+        except ValueError:
+            return jsonify({"error": "Invalid image data"}), 400
+
         ext = _get_extension_from_header(header)
         filename = f"{uuid.uuid4().hex[:16]}.{ext}"
         filepath = os.path.join(IMAGES_DIR, filename)
 
         with open(filepath, "wb") as f:
-            f.write(base64.b64decode(payload))
+            f.write(raw)
 
         return jsonify({"url": f"/api/images/{filename}"})
 

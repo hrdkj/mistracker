@@ -347,11 +347,12 @@ function renderThumbnail(imageData, id, type) {
     if (!imageData) {
         return '<span class="no-image">—</span>';
     }
-    return `<img src="${imageData}" class="card-thumb" data-src="${imageData}" alt="${type}">`;
+    const src = escapeAttr(imageData);
+    return `<img src="${src}" class="card-thumb" loading="lazy" data-src="${src}" alt="${escapeAttr(type)}">`;
 }
 
 function renderMistakeType(type) {
-    const className = (type || 'conceptual').toLowerCase().replace(/[\/\s]/g, '-');
+    const className = escapeAttr((type || 'conceptual').toLowerCase().replace(/[\/\s]/g, '-'));
     return `<span class="badge badge-${className}">${escapeHtml(type)}</span>`;
 }
 
@@ -444,7 +445,7 @@ function renderArchivedFolders() {
                 <span class="count-badge">${items.length}</span>
             </div>
             <div class="archive-folder-actions">
-                <button class="btn btn-sm btn-restore" data-category="${escapeHtml(cat)}" title="Restore all mistakes in this topic">
+                <button class="btn btn-sm btn-restore" data-category="${escapeAttr(cat)}" title="Restore all mistakes in this topic">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
                     Restore All
                 </button>
@@ -959,7 +960,7 @@ function openArchiveTopicModal() {
                     <span class="archive-topic-item-name">${escapeHtml(cat)}</span>
                     <span class="count-badge">${count}</span>
                 </div>
-                <button class="btn btn-sm btn-archive-topic" data-category="${escapeHtml(cat)}">Archive</button>
+                <button class="btn btn-sm btn-archive-topic" data-category="${escapeAttr(cat)}">Archive</button>
             `;
             list.appendChild(item);
             item.querySelector('.btn-archive-topic').addEventListener('click', () => {
@@ -1052,6 +1053,12 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function escapeAttr(text) {
+    return String(text ?? '').replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
 }
 
 function truncate(text, max) {
