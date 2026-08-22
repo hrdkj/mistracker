@@ -19,11 +19,18 @@ class Request {
     }
 }
 
+class FormDataShim {
+    constructor() { this.entries = new Map(); }
+    append(k, v) { this.entries.set(k, v); }
+    get(k) { return this.entries.has(k) ? this.entries.get(k) : ''; }
+}
+
 const sandbox = {
     console,
     Response,
     Request,
     URLSearchParams,
+    FormData: FormDataShim,
     crypto: { randomUUID: () => 'test-uuid-' + Math.random().toString(36).slice(2) },
     location: { pathname: '/mistracker/demo/index.html' },
     URL: { createObjectURL: () => 'blob:demo' },
@@ -100,9 +107,17 @@ const check = (name, cond, extra) => {
     r = await fetchMock('/api/mistakes/archive-category', { method: 'POST', body: '{}' });
     check('missing category -> 400', r.status === 400);
 
-    // Upload
-    r = await fetchMock('/api/upload', { method: 'POST', headers: { 'Content-Type': 'multipart/form-data; boundary=x' }, body: 'FORMDATA' });
-    // multipart path can't run without full FormData shim; JSON paths below cover logic.
+    // Upload — multipart, exactly how main.js calls it (no explicit
+    // Content-Type; the browser would add one for FormData bodies).
+    const fd = new FormDataShim();
+    fd.append('file', { name: 'pasted.png', type: 'image/png' });
+    r = await fetchMock('/api/upload', { method: 'POST', body: fd });
+    check('multipart upload -> blob url', r.status === 200 && (await r.json()).url.startsWith('blob:'), r.status);
+
+    const fdEmpty = new FormDataShim();
+    r = await fetchMock('/api/upload', { method: 'POST', body: fdEmpty });
+    check('multipart missing file -> 400', r.status === 400);
+
     const b64req = new Request('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: 'data:image/png;base64,iVBOR' }) });
     r = await fetchMock('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: b64req._body });
     check('upload data-uri echoed', (await r.json()).url.startsWith('data:image/png'));

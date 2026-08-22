@@ -37,21 +37,24 @@
     function toReq(input, init) {
         const headers = {
             get: (name) => {
-                const src = (init && init.headers) || (input && input.headers);
+                const src = (init && init.headers) || (input && input.headers) || null;
                 if (!src || typeof src.get !== 'function') return null;
-                const v = typeof src.get === 'function' ? src.get(name) : src[name];
+                const v = src.get(name);
                 return v === undefined ? null : v;
             },
         };
         const rawBody = init && 'body' in init ? init.body : undefined;
         if (rawBody === undefined || rawBody === null) {
             if (input && typeof input.json === 'function') return input;
-            return { headers, json: async () => null, formData: async () => ({ get: () => '' }) };
+            return { isFormData: false, headers, json: async () => null, formData: async () => ({ get: () => '' }) };
         }
         if (typeof FormData !== 'undefined' && rawBody instanceof FormData) {
-            return { headers, json: async () => null, formData: async () => rawBody };
+            // Browsers set multipart Content-Type automatically; init may not
+            // carry it, so detect FormData directly instead of via headers.
+            return { isFormData: true, headers, json: async () => null, formData: async () => rawBody };
         }
         return {
+            isFormData: false,
             headers,
             json: async () => JSON.parse(String(rawBody)),
             formData: async () => ({ get: () => '' }),
@@ -231,7 +234,7 @@
 
         if (method === 'POST' && path === '/api/upload') {
             const ct = req.headers.get('Content-Type') || '';
-            if (ct.includes('multipart/form-data')) {
+            if (req.isFormData || ct.includes('multipart/form-data')) {
                 const form = await req.formData();
                 const file = form.get('file');
                 if (!file || file === '') return jsonResponse({ error: 'No file selected' }, 400);
