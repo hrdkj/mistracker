@@ -10,8 +10,18 @@ from typing import Optional
 DATA_DIR = os.environ.get("MISTRACKER_DATA_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "data"
 )
-DB_FILE = os.path.join(DATA_DIR, "mistraker.db")
+DB_FILE = os.path.join(DATA_DIR, "mistracker.db")
+# Legacy DB filename (misspelling) — migrated automatically if present and new file absent.
+_LEGACY_DB_FILE = os.path.join(DATA_DIR, "mistraker.db")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
+
+# Migrate legacy DB file name on import (preserves user data after rename).
+if os.path.exists(_LEGACY_DB_FILE) and not os.path.exists(DB_FILE):
+    try:
+        os.rename(_LEGACY_DB_FILE, DB_FILE)
+    except OSError:
+        # Fall back to using the legacy file if rename fails (e.g. different mount).
+        DB_FILE = _LEGACY_DB_FILE
 
 MISTAKE_TYPES = [
     "Conceptual",

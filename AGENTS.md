@@ -1,4 +1,4 @@
-# Mistraker
+# Mistracker
 
 Local Flask web app for tracking study mistakes. Single-package Python app using SQLite.
 
@@ -25,7 +25,7 @@ There are no pytest/typecheck/CI configs.
 ## Architecture
 
 - **Entry point**: `main.py` → `app.create_app()` → Flask app with blueprint from `app/routes.py`
-- **Data layer**: `app/models.py` — raw `sqlite3` (no ORM). DB lives at `data/mistraker.db`; override the location with `MISTRACKER_DATA_DIR`
+- **Data layer**: `app/models.py` — raw `sqlite3` (no ORM). DB lives at `data/mistracker.db`; override the location with `MISTRACKER_DATA_DIR`
 - **Images**: Uploaded to `data/images/`, served via `/api/images/<filename>`
 - **Frontend**: Single-page app in `templates/index.html` + `static/js/main.js` + `static/css/style.css`
 - **Static demo**: `demo/demo-mode.js` mocks the whole API in-memory via a `fetch` override; `build_demo.py` renders the real template + copies assets into self-contained `dist-demo/`

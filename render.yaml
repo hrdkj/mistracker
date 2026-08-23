@@ -6,7 +6,7 @@
 # demo/demo-mode.js mocks the API in-browser, so writes reset on reload.
 services:
   - type: web
-    name: mistraker-demo
+    name: mistracker-demo
     runtime: static
     buildCommand: pip install flask && python build_demo.py
     staticPublishPath: ./dist-demo

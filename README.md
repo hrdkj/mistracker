@@ -6,7 +6,7 @@ Your mistakes, indexed and searchable.
 
 The hosted demo serves the full UI with sample data straight from a static site — it never sleeps, so there's no cold start:
 
-**https://mistraker-demo.onrender.com**
+**https://mistracker-demo.onrender.com**
 
 Changes are session-only and reset on reload. Once you deploy it (below), replace that URL with your real one.
 
@@ -26,14 +26,14 @@ Add sample data to an empty database:
 SEED_DEMO=1 uv run python main.py
 ```
 
-It never touches existing data — delete `data/mistraker.db` first to start fresh.
+It never touches existing data — delete `data/mistracker.db` first to start fresh.
 
 ## Deploying / updating the hosted demo
 
 The demo deploys as a **Render static site** from `render.yaml` — the build renders the real template via `build_demo.py` and bakes in sample data (`demo/demo-mode.js` mocks the API in-browser). Static sites on Render's free tier don't spin down, unlike Python web services.
 
 1. Push this repo to GitHub.
-2. In Render: **New → Blueprint**, point it at the repo (or sync the existing blueprint after deleting the old `mistraker` web service).
+2. In Render: **New → Blueprint**, point it at the repo (or sync the existing blueprint after deleting the old web service, if any).
 3. Done — every push to `main` rebuilds the demo automatically.
 
 Preview locally before pushing:

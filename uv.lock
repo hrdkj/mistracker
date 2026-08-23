@@ -146,7 +146,7 @@ wheels = [
 ]
 
 [[package]]
-name = "mistraker"
+name = "mistracker"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 
 # The data-dir env var must be set before importing app.models, which reads
 # it at import time — hence the deliberate late imports below.
-os.environ.setdefault("MISTRACKER_DATA_DIR", tempfile.mkdtemp(prefix="mistraker-build-"))
+os.environ.setdefault("MISTRACKER_DATA_DIR", tempfile.mkdtemp(prefix="mistracker-build-"))
 
 from flask import render_template
 

@@ -1,5 +1,5 @@
 [project]
-name = "mistraker"
+name = "mistracker"
 version = "0.1.0"
 description = "A local website to track study mistakes and improve learning"
 readme = "README.md"
@@ -10,4 +10,5 @@ dependencies = [
 ]
 
 [project.scripts]
-mistraker = "main:main"
+mistracker = "main:main"
+mistraker = "main:main"  # legacy alias — misspelling kept for backwards compat
