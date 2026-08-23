@@ -93,6 +93,14 @@ def build(out_dir: str) -> None:
     shutil.rmtree(out_abs, ignore_errors=True)
     shutil.copytree(os.path.join(REPO_ROOT, "static"), os.path.join(out_abs, "static"))
 
+    # Expose favicon at the site root so /favicon.ico and /favicon.svg
+    # resolve even when the browser ignores the <link rel="icon"> tag.
+    # The SVG source is already in static/favicon.svg via copytree.
+    _favicon_src = os.path.join(out_abs, "static", "favicon.svg")
+    if os.path.exists(_favicon_src):
+        shutil.copy(_favicon_src, os.path.join(out_abs, "favicon.svg"))
+        shutil.copy(_favicon_src, os.path.join(out_abs, "favicon.ico"))
+
     with open(os.path.join(out_abs, "index.html"), "w") as f:
         f.write(html)
     shutil.copy(
