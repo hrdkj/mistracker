@@ -1067,10 +1067,48 @@ function truncate(text, max) {
 }
 
 // ── Tab Navigation ────────────────────────────────────────────────
+function setupFooterCTA() {
+    const btn = document.getElementById('copy-clone-btn');
+    const code = document.getElementById('clone-cmd');
+    if (!btn || !code) return;
+    btn.addEventListener('click', async () => {
+        const text = code.textContent.trim();
+        let ok = false;
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                ok = true;
+            } else {
+                throw new Error('clipboard unavailable');
+            }
+        } catch {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { ok = document.execCommand('copy'); } catch { ok = false; }
+            ta.remove();
+        }
+        if (ok) {
+            const prev = btn.textContent;
+            btn.textContent = 'Copied!';
+            btn.classList.add('copied');
+            showToast('Copied — paste in your terminal!', 'success');
+            setTimeout(() => { btn.textContent = prev; btn.classList.remove('copied'); }, 1800);
+        } else {
+            showToast('Copy failed — select and copy manually', 'error');
+        }
+    });
+}
+
 function setupTabs() {
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
+    setupFooterCTA();
 }
 
 function switchTab(tabId) {
