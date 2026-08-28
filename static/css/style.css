@@ -1014,11 +1014,17 @@ td:nth-child(9) {
   td > * { flex: 1; min-width: 0; }
 }
 
-/* Footer — GitHub + clone workflow */
+/* Footer — GitHub + clone workflow (inside mistakes-tab only) */
 .app-footer {
   margin-top: auto;
   border-top: 1px solid var(--border);
   background: var(--surface);
+}
+
+#mistakes-tab .app-footer {
+  margin-top: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 .footer-inner {
