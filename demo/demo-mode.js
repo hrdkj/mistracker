@@ -283,5 +283,12 @@
             'box-shadow:0 4px 16px rgba(0,0,0,.35)', 'pointer-events:none',
         ].join(';');
         document.body.appendChild(bar);
+        // Reserve space so fixed pill doesn't cover footer clone command
+        document.body.classList.add('demo-mode');
+        const footer = document.querySelector('.app-footer');
+        if (footer) {
+            const h = bar.offsetHeight + 28;
+            footer.style.paddingBottom = h + 'px';
+        }
     });
 })();

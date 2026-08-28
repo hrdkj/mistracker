@@ -1133,6 +1133,16 @@ td:nth-child(9) {
   color: var(--text-2);
 }
 
+/* Demo mode: body gets class from demo-mode.js so fixed pill doesn't overlap footer */
+body.demo-mode {
+  padding-bottom: 0;
+}
+
+body.demo-mode .app-footer {
+  /* fallback if JS inline style fails; ensures at least scroll space */
+  padding-bottom: 56px;
+}
+
 @media (max-width: 600px) {
   .header-brand h1 { font-size: 1.2rem; }
   .tab-nav { width: 100%; }
