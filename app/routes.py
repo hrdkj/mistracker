@@ -14,7 +14,7 @@ IMAGES_DIR = models.IMAGES_DIR
 @bp.route("/")
 def index():
     """Serve the main page."""
-    return render_template("index.html", mistake_types=models.MISTAKE_TYPES)
+    return render_template("index.html", mistake_types=models.MISTAKE_TYPES, demo_mode=False)
 
 
 @bp.route("/api/mistakes", methods=["GET"])

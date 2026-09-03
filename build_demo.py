@@ -76,7 +76,7 @@ def build(out_dir: str) -> None:
 
     app = create_app()
     with app.test_request_context():
-        html = render_template("index.html", mistake_types=MISTAKE_TYPES)
+        html = render_template("index.html", mistake_types=MISTAKE_TYPES, demo_mode=True)
 
     # Make asset URLs relative so the page works under any base path.
     html = re.sub(r'((?:src|href)=")/static/', r"\1static/", html)
