@@ -1093,11 +1093,12 @@ function setupFooterCTA() {
             ta.remove();
         }
         if (ok) {
-            const prev = btn.textContent;
-            btn.textContent = 'Copied!';
+            const label = btn.querySelector('span') || btn;
+            const prev = label.textContent;
+            label.textContent = 'Copied!';
             btn.classList.add('copied');
             showToast('Copied — paste in your terminal!', 'success');
-            setTimeout(() => { btn.textContent = prev; btn.classList.remove('copied'); }, 1800);
+            setTimeout(() => { label.textContent = prev; btn.classList.remove('copied'); }, 1800);
         } else {
             showToast('Copy failed — select and copy manually', 'error');
         }

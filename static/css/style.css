@@ -1084,9 +1084,28 @@ td:nth-child(9) {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg);
+  transition: border-color var(--transition), box-shadow var(--transition);
 }
 
-.clone-cmd {
+.footer-clone:hover {
+  border-color: var(--border-strong);
+}
+
+.footer-clone:focus-within {
+  border-color: rgba(116, 214, 192, 0.42);
+  box-shadow: 0 0 0 3px rgba(116, 214, 192, 0.1);
+}
+
+.clone-prompt {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  user-select: none;
+}
+
+#clone-cmd {
   flex: 1;
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -1095,10 +1114,14 @@ td:nth-child(9) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: all;
 }
 
 .copy-btn {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 14px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -1108,7 +1131,7 @@ td:nth-child(9) {
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--transition), border-color var(--transition), color var(--transition);
+  transition: background var(--transition), border-color var(--transition), color var(--transition), transform var(--transition);
 }
 
 .copy-btn:hover {
@@ -1116,6 +1139,14 @@ td:nth-child(9) {
   border-color: rgba(116, 214, 192, 0.35);
   color: var(--accent);
 }
+
+.copy-btn:focus-visible {
+  outline: none;
+  border-color: rgba(116, 214, 192, 0.55);
+  box-shadow: 0 0 0 3px rgba(116, 214, 192, 0.18);
+}
+
+.copy-btn:active { transform: scale(0.97); }
 
 .copy-btn.copied {
   background: var(--accent);
@@ -1139,14 +1170,48 @@ td:nth-child(9) {
   color: var(--text-2);
 }
 
-/* Demo mode: body gets class from demo-mode.js so fixed pill doesn't overlap footer */
-body.demo-mode {
-  padding-bottom: 0;
+/* Demo mode: in-flow banner (injected by demo-mode.js) — never overlaps footer */
+.demo-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 14px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  border: 1px solid rgba(242, 200, 121, 0.32);
+  color: var(--text-2);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
-body.demo-mode .app-footer {
-  /* fallback if JS inline style fails; ensures at least scroll space */
-  padding-bottom: 56px;
+.demo-banner svg { flex-shrink: 0; color: var(--warn); }
+
+.demo-banner strong { color: var(--warn); font-weight: 700; }
+
+.demo-banner-dismiss {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition), color var(--transition);
+}
+
+.demo-banner-dismiss:hover { background: rgba(242, 200, 121, 0.16); color: var(--warn); }
+
+@media (max-width: 760px) {
+  .footer-inner { padding: 14px 16px; gap: 12px; }
+  .footer-clone { flex-basis: 100%; max-width: none; min-width: 0; }
+  .footer-hint { white-space: normal; }
 }
 
 @media (max-width: 600px) {

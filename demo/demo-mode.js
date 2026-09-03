@@ -273,22 +273,42 @@
     };
 
     // Banner so nobody mistakes the static demo for persistent storage.
+    // Rendered in-flow at the top of .app-main: always visible on every
+    // tab, dismissible, and — unlike the old fixed bottom pill — it can
+    // never overlap the footer clone CTA.
     document.addEventListener('DOMContentLoaded', () => {
+        try {
+            if (window.sessionStorage && sessionStorage.getItem('demo-banner-dismissed') === '1') return;
+        } catch { /* storage unavailable — still show banner */ }
+        const main = document.querySelector('.app-main');
+        if (!main || main.querySelector('.demo-banner')) return;
         const bar = document.createElement('div');
-        bar.textContent = 'Static demo — changes reset when you reload.';
-        bar.style.cssText = [
-            'position:fixed', 'left:50%', 'bottom:14px', 'transform:translateX(-50%)',
-            'z-index:9999', 'padding:8px 16px', 'border-radius:999px',
-            'background:#1f2937', 'color:#f9fafb', 'font:600 12px/1.4 Inter,sans-serif',
-            'box-shadow:0 4px 16px rgba(0,0,0,.35)', 'pointer-events:none',
-        ].join(';');
-        document.body.appendChild(bar);
-        // Reserve space so fixed pill doesn't cover footer clone command
+        bar.className = 'demo-banner';
+        bar.setAttribute('role', 'status');
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        icon.setAttribute('width', '16');
+        icon.setAttribute('height', '16');
+        icon.setAttribute('fill', 'none');
+        icon.setAttribute('stroke', 'currentColor');
+        icon.setAttribute('stroke-width', '2');
+        icon.setAttribute('stroke-linecap', 'round');
+        icon.setAttribute('stroke-linejoin', 'round');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.innerHTML = '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>';
+        const msg = document.createElement('span');
+        msg.innerHTML = '<strong>Static demo</strong> — changes reset when you reload. Clone the repo below to keep your data.';
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'demo-banner-dismiss';
+        close.setAttribute('aria-label', 'Dismiss demo notice');
+        close.textContent = '✕';
+        close.addEventListener('click', () => {
+            try { if (window.sessionStorage) sessionStorage.setItem('demo-banner-dismissed', '1'); } catch { /* ignore */ }
+            bar.remove();
+        });
+        bar.append(icon, msg, close);
+        main.prepend(bar);
         document.body.classList.add('demo-mode');
-        const footer = document.querySelector('.app-footer');
-        if (footer) {
-            const h = bar.offsetHeight + 28;
-            footer.style.paddingBottom = h + 'px';
-        }
     });
 })();

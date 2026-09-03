@@ -129,8 +129,12 @@
                             </a>
                         </div>
                         <div class="footer-clone">
-                            <code id="clone-cmd">git clone https://github.com/hrdkdev/mistracker.git</code>
-                            <button type="button" id="copy-clone-btn" class="copy-btn" title="Copy clone command">Copy</button>
+                            <span class="clone-prompt" aria-hidden="true">$</span>
+                            <code id="clone-cmd" class="clone-cmd" title="git clone https://github.com/hrdkdev/mistracker.git">git clone https://github.com/hrdkdev/mistracker.git</code>
+                            <button type="button" id="copy-clone-btn" class="copy-btn" title="Copy clone command" aria-label="Copy clone command">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                <span>Copy</span>
+                            </button>
                         </div>
                         <span class="footer-hint">then <code>cd mistracker &amp;&amp; uv run python main.py</code></span>
                     </div>
