@@ -55,26 +55,26 @@ const check = (name, cond, extra) => {
     // GET all active
     let r = await fetchMock('/api/mistakes?archived=false');
     let rows = await r.json();
-    check('GET mistakes', r.status === 200 && rows.length === 7, rows.length);
+    check('GET mistakes', r.status === 200 && rows.length === 6, rows.length);
 
     // Filters replicate server semantics
-    r = await fetchMock('/api/mistakes?archived=false&category=CALCULUS');
-    check('case-insensitive category filter', (await r.json()).length === 2);
-    r = await fetchMock('/api/mistakes?archived=false&subtopic=chain%20rule');
+    r = await fetchMock('/api/mistakes?archived=false&category=LINEAR%20ALGEBRA');
+    check('case-insensitive category filter', (await r.json()).length === 3);
+    r = await fetchMock('/api/mistakes?archived=false&subtopic=perceptron');
     check('case-insensitive subtopic membership', (await r.json()).length === 1);
     r = await fetchMock('/api/mistakes?archived=false&subtopic=Nonexistent');
     check('subtopic no match -> []', (await r.json()).length === 0);
     r = await fetchMock('/api/mistakes');
-    check('no archived param -> all rows', (await r.json()).length === 7);
+    check('no archived param -> all rows', (await r.json()).length === 6);
 
     // Categories/subtopics
     r = await fetchMock('/api/categories?archived=false');
     check('categories sorted distinct', JSON.stringify(await r.json()) ===
-        JSON.stringify(['Calculus', 'Linear Algebra', 'Physics', 'Probability']));
+        JSON.stringify(['Linear Algebra', 'MLF', 'MLT']));
     r = await fetchMock('/api/topics?archived=false');
-    check('topics alias', (await r.json()).length === 4);
-    r = await fetchMock('/api/subtopics?archived=false&category=physics');
-    check('subtopics by category', JSON.stringify(await r.json()) === JSON.stringify(['Energy', 'Kinematics']));
+    check('topics alias', (await r.json()).length === 3);
+    r = await fetchMock('/api/subtopics?archived=false&category=mlt');
+    check('subtopics by category', JSON.stringify(await r.json()) === JSON.stringify(['Clustering K-Means', 'Perceptron']));
 
     // POST create
     r = await fetchMock('/api/mistakes', { method: 'POST', body: JSON.stringify({ category: 'NewCat', subtopics: ['a', 'A', 'b'], mistake_type: 'HACKED', why_happened: null }) });
@@ -100,10 +100,10 @@ const check = (name, cond, extra) => {
     check('PATCH unarchive -> archived=0', (await r.json()).archived === 0);
 
     // Category bulk archive
-    r = await fetchMock('/api/mistakes/archive-category', { method: 'POST', body: JSON.stringify({ category: 'calculus' }) });
-    check('archive-category case-insens count=2', (await r.json()).archived === 2);
-    r = await fetchMock('/api/mistakes/unarchive-category', { method: 'POST', body: JSON.stringify({ category: 'CALCULUS' }) });
-    check('unarchive-category count=2', (await r.json()).unarchived === 2);
+    r = await fetchMock('/api/mistakes/archive-category', { method: 'POST', body: JSON.stringify({ category: 'linear algebra' }) });
+    check('archive-category case-insens count=3', (await r.json()).archived === 3);
+    r = await fetchMock('/api/mistakes/unarchive-category', { method: 'POST', body: JSON.stringify({ category: 'LINEAR ALGEBRA' }) });
+    check('unarchive-category count=3', (await r.json()).unarchived === 3);
     r = await fetchMock('/api/mistakes/archive-category', { method: 'POST', body: '{}' });
     check('missing category -> 400', r.status === 400);
 
@@ -135,7 +135,7 @@ const check = (name, cond, extra) => {
 
     // BASE-path rewriting (GitHub Pages subpath)
     r = await fetchMock('/mistracker/demo/api/mistakes?archived=false');
-    check('subpath /api rewritten', (await r.json()).length >= 7);
+    check('subpath /api rewritten', (await r.json()).length >= 6);
 
     // Unknown API route falls through to real fetch -> would throw our sentinel
     try { await fetchMock('/api/unknown'); check('passthrough', true); }

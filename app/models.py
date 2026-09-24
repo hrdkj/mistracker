@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import sqlite3
@@ -462,6 +463,46 @@ def get_analytics() -> dict:
 
 
 # ── Demo seed data ───────────────────────────────────────────────────
+#
+# Real anonymized examples (text cleaned up for public display). The
+# question/solution images live in demo/assets/ so both `seed_demo()`
+# and the static demo build (build_demo.py) can use them without a DB.
+
+DEMO_ASSETS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "demo", "assets"
+)
+
+_DEMO_MIME_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+
+
+def demo_asset_bytes(filename: str | None) -> bytes | None:
+    """Read a demo asset file, or None if it is missing."""
+    if not filename:
+        return None
+    path = os.path.join(DEMO_ASSETS_DIR, os.path.basename(filename))
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def demo_asset_data_url(filename: str | None, fallback: bytes) -> str:
+    """Return a data: URL for a demo asset, falling back to given bytes."""
+    raw = demo_asset_bytes(filename)
+    if raw is None:
+        raw = fallback
+        mime = "image/png"
+    else:
+        ext = os.path.splitext(filename or "")[1].lower()
+        mime = _DEMO_MIME_TYPES.get(ext, "image/png")
+    return f"data:{mime};base64," + base64.b64encode(raw).decode()
 
 
 def _placeholder_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
@@ -489,59 +530,63 @@ def _placeholder_png(width: int, height: int, rgb: tuple[int, int, int]) -> byte
 DEMO_MISTAKES = [
     {
         "category": "Linear Algebra",
-        "subtopics": ["Basis", "Dimension"],
-        "concept": "Rank-nullity application",
+        "subtopics": [],
+        "concept": "det(A+B) ≠ det(A) + det(B)",
         "mistake_type": "Conceptual",
-        "why_happened": "Assumed rank equals the number of columns without checking for independence.",
-        "how_to_avoid": "Row-reduce first, then reason about rank.",
+        "why_happened": "Assumed det(A+B) = det(A) + det(B), writing det(A+A) = 2·det(A). But for a 3×3 matrix, det(2A) = 2³·det(A) = 8·det(A).",
+        "how_to_avoid": "The determinant splits linearly across one column at a time — expand column by column instead of splitting the whole matrix.",
+        "demo_q": "det-linearity-q.png",
+        "demo_s": "det-linearity-s.png",
     },
     {
-        "category": "Calculus",
-        "subtopics": ["Chain Rule"],
-        "concept": "Composite derivative with trig",
+        "category": "Linear Algebra",
+        "subtopics": ["Rank"],
+        "concept": "Rank of a matrix product",
+        "mistake_type": "Conceptual",
+        "why_happened": "New type of question — did not know that the rank of a product is bounded by the ranks of the factors.",
+        "how_to_avoid": "Visualize rank loss through a product: rank(AB) ≤ min(rank(A), rank(B)).",
+        "demo_q": "rank-product-q.png",
+        "demo_s": "rank-product-s.png",
+    },
+    {
+        "category": "Linear Algebra",
+        "subtopics": ["Rank"],
+        "concept": "Rank vs free parameter k",
         "mistake_type": "Silly/Careless",
-        "why_happened": "Forgot to multiply by the inner derivative.",
-        "how_to_avoid": "Write u-substitution explicitly before differentiating.",
+        "why_happened": "Rushed the rank check — missed that two rows are clearly not multiples of each other, so the rank is at least 2 for any k.",
+        "how_to_avoid": "Check for obviously independent rows first to pin down a minimum rank before chasing the parameter.",
+        "demo_q": "rank-param-q.png",
+        "demo_s": "rank-param-s.png",
     },
     {
-        "category": "Calculus",
-        "subtopics": ["Integration", "Substitution"],
-        "concept": "Definite integral bounds after substitution",
+        "category": "MLT",
+        "subtopics": ["Perceptron"],
+        "concept": "Reading sign patterns for separability",
         "mistake_type": "Misread Question",
-        "why_happened": "Kept original bounds after substituting variables.",
-        "how_to_avoid": "Convert bounds immediately when substituting.",
+        "why_happened": "Answered without analysing the sign conditions on the data points (x1·x2 > 0 and x1·y > 0).",
+        "how_to_avoid": "Translate sign conditions into geometry first: x1·x2 > 0 puts points in quadrants I/III, and x1·y > 0 ties the label to the sign of x1.",
+        "demo_q": "perceptron-signs-q.png",
+        "demo_s": "perceptron-signs-s.png",
     },
     {
-        "category": "Probability",
-        "subtopics": ["Combinatorics"],
-        "concept": "nCr vs nPr in counting problems",
-        "mistake_type": "Memory/Formula",
-        "why_happened": "Used permutations where order did not matter.",
-        "how_to_avoid": "Ask 'does order matter?' before choosing a formula.",
-    },
-    {
-        "category": "Probability",
-        "subtopics": ["Conditional Probability"],
-        "concept": "Bayes theorem setup",
+        "category": "MLF",
+        "subtopics": ["Error"],
+        "concept": "SSE for a constant predictor",
         "mistake_type": "Conceptual",
-        "why_happened": "Swapped prior and likelihood in the numerator.",
-        "how_to_avoid": "Label events and write Bayes table before computing.",
+        "why_happened": "With the predicted line y = 2, SSE is the sum of (y − ŷ)² — computed the mean instead of the sum.",
+        "how_to_avoid": "Check what is fitted (here only y, x is irrelevant) and whether the question asks for SSE or mean SSE.",
+        "demo_q": "sse-constant-q.png",
+        "demo_s": "sse-constant-s.png",
     },
     {
-        "category": "Physics",
-        "subtopics": ["Kinematics"],
-        "concept": "Sign convention in projectile motion",
-        "mistake_type": "Calculation",
-        "why_happened": "Mixed up positive direction midway through the problem.",
-        "how_to_avoid": "Draw axes and mark sign conventions at the start.",
-    },
-    {
-        "category": "Physics",
-        "subtopics": ["Kinematics", "Energy"],
-        "concept": "Work-energy theorem under friction",
-        "mistake_type": "Time Pressure",
-        "why_happened": "Rushed the free-body diagram and dropped the friction term.",
-        "how_to_avoid": "Budget two minutes for setup; never skip FBDs.",
+        "category": "MLT",
+        "subtopics": ["Clustering K-Means"],
+        "concept": "Splitting variance across principal axes",
+        "mistake_type": "Conceptual",
+        "why_happened": "Did not know how to split variance to minimize it.",
+        "how_to_avoid": "Minimum variance spreads variance equally across the principal axes, so the corresponding eigenvalues should be equal.",
+        "demo_q": "kmeans-variance-q.png",
+        "demo_s": "kmeans-variance-s.png",
     },
 ]
 
@@ -558,17 +603,25 @@ def seed_demo(force: bool = False) -> bool:
             return False
 
         os.makedirs(IMAGES_DIR, exist_ok=True)
-        question_png = _placeholder_png(320, 180, (59, 130, 246))
-        solution_png = _placeholder_png(320, 180, (16, 185, 129))
         base_time = datetime.now()
 
         for i, entry in enumerate(DEMO_MISTAKES):
-            q_name = f"{uuid.uuid4().hex[:16]}.png"
-            s_name = f"{uuid.uuid4().hex[:16]}.png"
+            # Prefer the real demo images; fall back to solid-color
+            # placeholders when the assets are missing.
+            q_bytes = demo_asset_bytes(entry.get("demo_q")) or _placeholder_png(
+                320, 180, (59, 130, 246)
+            )
+            s_bytes = demo_asset_bytes(entry.get("demo_s")) or _placeholder_png(
+                320, 180, (16, 185, 129)
+            )
+            q_ext = os.path.splitext(entry.get("demo_q") or "")[1] or ".png"
+            s_ext = os.path.splitext(entry.get("demo_s") or "")[1] or ".png"
+            q_name = f"{uuid.uuid4().hex[:16]}{q_ext}"
+            s_name = f"{uuid.uuid4().hex[:16]}{s_ext}"
             with open(os.path.join(IMAGES_DIR, q_name), "wb") as f:
-                f.write(question_png)
+                f.write(q_bytes)
             with open(os.path.join(IMAGES_DIR, s_name), "wb") as f:
-                f.write(solution_png)
+                f.write(s_bytes)
 
             subtopics = _parse_subtopics(entry["subtopics"])
             added_at = (base_time - timedelta(days=len(DEMO_MISTAKES) - i)).isoformat()

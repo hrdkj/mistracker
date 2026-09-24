@@ -13,7 +13,6 @@ Usage:
 """
 
 import argparse
-import base64
 import json
 import os
 import re
@@ -29,15 +28,21 @@ os.environ.setdefault("MISTRACKER_DATA_DIR", tempfile.mkdtemp(prefix="mistracker
 from flask import render_template
 
 from app import create_app
-from app.models import DEMO_MISTAKES, MISTAKE_TYPES, _parse_subtopics, _placeholder_png
+from app.models import (
+    DEMO_MISTAKES,
+    MISTAKE_TYPES,
+    _parse_subtopics,
+    _placeholder_png,
+    demo_asset_data_url,
+)
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
 def build_demo_data() -> str:
     """Generate demo-data.js from the same source of truth as seed_demo()."""
-    question_png = base64.b64encode(_placeholder_png(320, 180, (59, 130, 246))).decode()
-    solution_png = base64.b64encode(_placeholder_png(320, 180, (16, 185, 129))).decode()
+    fallback_q = _placeholder_png(320, 180, (59, 130, 246))
+    fallback_s = _placeholder_png(320, 180, (16, 185, 129))
     base_time = datetime.now().astimezone()
 
     mistakes = []
@@ -52,8 +57,12 @@ def build_demo_data() -> str:
                 "subtopic": ", ".join(subtopics),
                 "concept": entry["concept"],
                 "topic": entry["category"],
-                "question_image": f"data:image/png;base64,{question_png}",
-                "solution_image": f"data:image/png;base64,{solution_png}",
+                "question_image": demo_asset_data_url(
+                    entry.get("demo_q"), fallback_q
+                ),
+                "solution_image": demo_asset_data_url(
+                    entry.get("demo_s"), fallback_s
+                ),
                 "mistake_type": entry["mistake_type"],
                 "why_happened": entry["why_happened"],
                 "how_to_avoid": entry["how_to_avoid"],
