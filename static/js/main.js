@@ -707,6 +707,13 @@ function setupEventListeners() {
         });
     });
 
+    // Escape closes the fullscreen question/solution image viewer
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !imageModal.classList.contains('hidden')) {
+            imageModal.classList.add('hidden');
+        }
+    });
+
     // Clear image buttons
     clearImageBtn.addEventListener('click', clearPastedImage);
     editClearImageBtn.addEventListener('click', clearEditPastedImage);
