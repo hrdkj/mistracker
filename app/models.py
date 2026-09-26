@@ -6,7 +6,6 @@ import struct
 import uuid
 import zlib
 from datetime import datetime, timedelta
-from typing import Optional
 
 DATA_DIR = os.environ.get("MISTRACKER_DATA_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "data"
@@ -73,6 +72,17 @@ def init_db() -> None:
         )
     except sqlite3.OperationalError:
         pass
+    # Secondary indexes for the read paths in get_all_mistakes(),
+    # get_all_categories(), get_all_subtopics() and get_analytics().
+    # IF NOT EXISTS keeps this idempotent on existing databases.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mistakes_archived_date "
+        "ON mistakes (archived, date_added)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mistakes_category "
+        "ON mistakes (archived, category)"
+    )
     conn.commit()
     conn.close()
 
@@ -88,7 +98,7 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
     return d
 
 
-def _normalized_text(value: Optional[str]) -> str:
+def _normalized_text(value: str | None) -> str:
     if not value:
         return ""
     return str(value).strip()
@@ -122,10 +132,10 @@ def _parse_subtopics(value) -> list[str]:
 
 
 def get_all_mistakes(
-    category: Optional[str] = None,
-    subtopic: Optional[str] = None,
-    mistake_type: Optional[str] = None,
-    archived: Optional[bool] = None,
+    category: str | None = None,
+    subtopic: str | None = None,
+    mistake_type: str | None = None,
+    archived: bool | None = None,
 ) -> list[dict]:
     """Get all mistakes, optionally filtered.
 
@@ -165,7 +175,7 @@ def get_all_mistakes(
     return results
 
 
-def get_mistake_by_id(mistake_id: str) -> Optional[dict]:
+def get_mistake_by_id(mistake_id: str) -> dict | None:
     conn = _get_conn()
     row = conn.execute("SELECT * FROM mistakes WHERE id = ?", (mistake_id,)).fetchone()
     conn.close()
@@ -216,7 +226,7 @@ def add_mistake(data: dict) -> dict:
     return get_mistake_by_id(new_id)
 
 
-def update_mistake(mistake_id: str, data: dict) -> Optional[dict]:
+def update_mistake(mistake_id: str, data: dict) -> dict | None:
     existing = get_mistake_by_id(mistake_id)
     if not existing:
         return None
@@ -241,12 +251,10 @@ def update_mistake(mistake_id: str, data: dict) -> Optional[dict]:
     )
     question_image = data.get("question_image", existing["question_image"])
     solution_image = data.get("solution_image", existing["solution_image"])
-    mistake_type = data.get("mistake_type", existing["mistake_type"])
-    mistake_type = (
-        _safe_mistake_type(mistake_type, existing["mistake_type"])
-        if "mistake_type" in data
-        else existing["mistake_type"]
-    )
+    if "mistake_type" in data:
+        mistake_type = _safe_mistake_type(data["mistake_type"], existing["mistake_type"])
+    else:
+        mistake_type = existing["mistake_type"]
     why_happened = (
         _normalized_text(data["why_happened"])
         if "why_happened" in data
@@ -311,42 +319,32 @@ def delete_mistake(mistake_id: str) -> bool:
     return True
 
 
-def get_all_categories(archived: Optional[bool] = None) -> list[str]:
+def get_all_categories(archived: bool | None = None) -> list[str]:
     conn = _get_conn()
+    query = "SELECT DISTINCT category FROM mistakes WHERE category != ''"
+    params: list = []
     if archived is not None:
-        rows = conn.execute(
-            "SELECT DISTINCT category FROM mistakes WHERE category != '' AND archived = ? ORDER BY category",
-            (1 if archived else 0,),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT DISTINCT category FROM mistakes WHERE category != '' ORDER BY category"
-        ).fetchall()
+        query += " AND archived = ?"
+        params.append(1 if archived else 0)
+    query += " ORDER BY category"
+    rows = conn.execute(query, params).fetchall()
     conn.close()
     return [r["category"] for r in rows]
 
 
 def get_all_subtopics(
-    category: Optional[str] = None, archived: Optional[bool] = None
+    category: str | None = None, archived: bool | None = None
 ) -> list[str]:
     conn = _get_conn()
-    if category and archived is not None:
-        rows = conn.execute(
-            "SELECT subtopics FROM mistakes WHERE LOWER(category) = LOWER(?) AND archived = ?",
-            (category, 1 if archived else 0),
-        ).fetchall()
-    elif category:
-        rows = conn.execute(
-            "SELECT subtopics FROM mistakes WHERE LOWER(category) = LOWER(?)",
-            (category,),
-        ).fetchall()
-    elif archived is not None:
-        rows = conn.execute(
-            "SELECT subtopics FROM mistakes WHERE archived = ?",
-            (1 if archived else 0,),
-        ).fetchall()
-    else:
-        rows = conn.execute("SELECT subtopics FROM mistakes").fetchall()
+    query = "SELECT subtopics FROM mistakes WHERE 1=1"
+    params: list = []
+    if category:
+        query += " AND LOWER(category) = LOWER(?)"
+        params.append(category)
+    if archived is not None:
+        query += " AND archived = ?"
+        params.append(1 if archived else 0)
+    rows = conn.execute(query, params).fetchall()
     conn.close()
 
     all_subtopics = set()
@@ -359,10 +357,10 @@ def get_all_subtopics(
         except (json.JSONDecodeError, TypeError):
             pass
 
-    return sorted(list(all_subtopics))
+    return sorted(all_subtopics)
 
 
-def archive_mistake(mistake_id: str) -> Optional[dict]:
+def archive_mistake(mistake_id: str) -> dict | None:
     existing = get_mistake_by_id(mistake_id)
     if not existing:
         return None
@@ -376,7 +374,7 @@ def archive_mistake(mistake_id: str) -> Optional[dict]:
     return get_mistake_by_id(mistake_id)
 
 
-def unarchive_mistake(mistake_id: str) -> Optional[dict]:
+def unarchive_mistake(mistake_id: str) -> dict | None:
     existing = get_mistake_by_id(mistake_id)
     if not existing:
         return None

@@ -2,13 +2,27 @@ import base64
 import os
 import uuid
 
-from flask import Blueprint, render_template, request, jsonify, send_from_directory
+from flask import Blueprint, jsonify, render_template, request, send_from_directory
 
 from app import models
 
 bp = Blueprint("main", __name__)
 
 IMAGES_DIR = models.IMAGES_DIR
+
+
+def _parse_archived_param(value: str | None) -> bool | None:
+    """Parse an ?archived=true/false query param. Any other value means all."""
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    return None
+
+
+def _request_category() -> str | None:
+    """Category filter, accepting the legacy ?topic= alias."""
+    return request.args.get("category") or request.args.get("topic")
 
 
 @bp.route("/")
@@ -20,16 +34,10 @@ def index():
 @bp.route("/api/mistakes", methods=["GET"])
 def get_mistakes():
     """Get all mistakes with optional filters."""
-    category = request.args.get("category") or request.args.get("topic")
+    category = _request_category()
     subtopic = request.args.get("subtopic")
     mistake_type = request.args.get("mistake_type")
-    archived_param = request.args.get("archived")
-
-    archived = None
-    if archived_param == "true":
-        archived = True
-    elif archived_param == "false":
-        archived = False
+    archived = _parse_archived_param(request.args.get("archived"))
 
     mistakes = models.get_all_mistakes(
         category=category,
@@ -122,12 +130,7 @@ def unarchive_category():
 @bp.route("/api/categories", methods=["GET"])
 def get_categories():
     """Get all unique categories."""
-    archived_param = request.args.get("archived")
-    archived = None
-    if archived_param == "true":
-        archived = True
-    elif archived_param == "false":
-        archived = False
+    archived = _parse_archived_param(request.args.get("archived"))
     categories = models.get_all_categories(archived=archived)
     return jsonify(categories)
 
@@ -135,13 +138,8 @@ def get_categories():
 @bp.route("/api/subtopics", methods=["GET"])
 def get_subtopics():
     """Get all unique subtopics, optionally filtered by category."""
-    category = request.args.get("category") or request.args.get("topic")
-    archived_param = request.args.get("archived")
-    archived = None
-    if archived_param == "true":
-        archived = True
-    elif archived_param == "false":
-        archived = False
+    category = _request_category()
+    archived = _parse_archived_param(request.args.get("archived"))
     subtopics = models.get_all_subtopics(category=category, archived=archived)
     return jsonify(subtopics)
 
@@ -149,14 +147,7 @@ def get_subtopics():
 @bp.route("/api/topics", methods=["GET"])
 def get_topics():
     """Backward-compatible alias for categories."""
-    archived_param = request.args.get("archived")
-    archived = None
-    if archived_param == "true":
-        archived = True
-    elif archived_param == "false":
-        archived = False
-    topics = models.get_all_categories(archived=archived)
-    return jsonify(topics)
+    return get_categories()
 
 
 @bp.route("/api/analytics", methods=["GET"])
@@ -230,15 +221,17 @@ def serve_image(filename):
     return send_from_directory(IMAGES_DIR, filename)
 
 
+_IMAGE_EXTENSIONS = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+
+
 def _get_extension(content_type: str) -> str:
-    mapping = {
-        "image/png": "png",
-        "image/jpeg": "jpg",
-        "image/jpg": "jpg",
-        "image/webp": "webp",
-        "image/gif": "gif",
-    }
-    return mapping.get(content_type, "png")
+    return _IMAGE_EXTENSIONS.get(content_type, "png")
 
 
 def _get_extension_from_header(header: str) -> str:

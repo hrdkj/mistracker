@@ -174,11 +174,7 @@ async function loadArchivedMistakes() {
 }
 
 async function loadSubtopics(category = '') {
-    const params = new URLSearchParams();
-    params.append('archived', 'false');
-    if (category) params.append('category', category);
-    const response = await fetch(`/api/subtopics?${params}`);
-    subtopics = await response.json();
+    subtopics = await fetchSubtopicsByCategory(category);
     renderSubtopicFilter();
 }
 
@@ -279,21 +275,23 @@ async function uploadImageFile(file) {
 }
 
 // ── Render Functions ──────────────────────────────────────────────
+function matchesQuery(m, q) {
+    const query = q.toLowerCase();
+    return (m.category || '').toLowerCase().includes(query) ||
+        (m.subtopic || '').toLowerCase().includes(query) ||
+        (m.concept || '').toLowerCase().includes(query) ||
+        (m.why_happened || '').toLowerCase().includes(query) ||
+        (m.how_to_avoid || '').toLowerCase().includes(query) ||
+        (m.mistake_type || '').toLowerCase().includes(query);
+}
+
 function renderTable() {
     mistakesTable.innerHTML = '';
     let filtered = mistakes;
 
     // Client-side search filter
     if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        filtered = filtered.filter(m =>
-            (m.category || '').toLowerCase().includes(q) ||
-            (m.subtopic || '').toLowerCase().includes(q) ||
-            (m.concept || '').toLowerCase().includes(q) ||
-            (m.why_happened || '').toLowerCase().includes(q) ||
-            (m.how_to_avoid || '').toLowerCase().includes(q) ||
-            (m.mistake_type || '').toLowerCase().includes(q)
-        );
+        filtered = filtered.filter(m => matchesQuery(m, searchQuery));
     }
 
     if (filtered.length === 0) {
@@ -404,17 +402,9 @@ function renderArchivedFolders() {
     });
 
     if (archivedSearchQuery) {
-        const q = archivedSearchQuery.toLowerCase();
         const filtered = {};
         for (const [cat, items] of Object.entries(grouped)) {
-            const matching = items.filter(m =>
-                (m.category || '').toLowerCase().includes(q) ||
-                (m.subtopic || '').toLowerCase().includes(q) ||
-                (m.concept || '').toLowerCase().includes(q) ||
-                (m.why_happened || '').toLowerCase().includes(q) ||
-                (m.how_to_avoid || '').toLowerCase().includes(q) ||
-                (m.mistake_type || '').toLowerCase().includes(q)
-            );
+            const matching = items.filter(m => matchesQuery(m, archivedSearchQuery));
             if (matching.length > 0) filtered[cat] = matching;
         }
         grouped = filtered;
@@ -1066,11 +1056,6 @@ function escapeAttr(text) {
     return String(text ?? '').replace(/[&<>"']/g, c => (
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
     ));
-}
-
-function truncate(text, max) {
-    if (!text) return '';
-    return text.length > max ? text.slice(0, max) + '…' : text;
 }
 
 // ── Tab Navigation ────────────────────────────────────────────────
