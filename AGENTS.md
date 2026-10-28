@@ -26,6 +26,7 @@ There are no pytest/typecheck/CI configs.
 
 - **Entry point**: `main.py` → `app.create_app()` → Flask app with blueprint from `app/routes.py`
 - **Data layer**: `app/models.py` — raw `sqlite3` (no ORM). DB lives at `data/mistracker.db`; override the location with `MISTRACKER_DATA_DIR`
+- **Backups**: `app/backup.py` packages a consistent database snapshot and `data/images/` into a ZIP; restore safety copies go under `data/backups/`
 - **Images**: Uploaded to `data/images/`, served via `/api/images/<filename>`
 - **Frontend**: Single-page app in `templates/index.html` + `static/js/main.js` + `static/css/style.css`
 - **Static demo**: `demo/demo-mode.js` mocks the whole API in-memory via a `fetch` override; `build_demo.py` renders the real template + copies assets into self-contained `dist-demo/`
@@ -35,7 +36,7 @@ There are no pytest/typecheck/CI configs.
 - Python ≥3.12, dependency managed by **uv** (`uv.lock` present)
 - Runtime dependencies: `flask>=3.0.0`, `gunicorn>=21.0.0` (gunicorn is currently unused — kept in case a Python deployment returns; the hosted demo is now a Render *static* site via `render.yaml`)
 - `subtopics` column stores JSON arrays as text; parsed back to lists via `_row_to_dict`. Legacy duplicate columns (`topic`, `subtopic`) are still written alongside `category`/`subtopics`
-- Max upload size: 16 MB (`MAX_CONTENT_LENGTH`)
+- Image upload limit: 16 MB per request; backup restore limit: 512 MB (`MAX_CONTENT_LENGTH`)
 - SQLite uses WAL journal mode (`PRAGMA journal_mode=WAL`)
 - `data/*.db` and `data/images/` are gitignored; DB is created on first run by `init_db()`
 - `/api/topics` is a backward-compatible alias for `/api/categories`

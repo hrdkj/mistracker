@@ -39,6 +39,10 @@ const editModal = document.getElementById('edit-modal');
 const deleteModal = document.getElementById('delete-modal');
 const imageModal = document.getElementById('image-modal');
 const modalImage = document.getElementById('modal-image');
+const insightsSummary = document.getElementById('insights-summary');
+const analyticsTypes = document.getElementById('analytics-types');
+const analyticsCategories = document.getElementById('analytics-categories');
+const analyticsSubtopics = document.getElementById('analytics-subtopics');
 
 // Tab elements
 const tabBtns = document.querySelectorAll('.tab-btn');
@@ -81,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     setupClipboardPaste();
     setupTabs();
+    setupBackupControls();
     applySavedEntryDetails();
 });
 
@@ -171,6 +176,74 @@ async function loadArchivedMistakes() {
     const response = await fetch(`/api/mistakes?${params}`);
     archivedMistakes = await response.json();
     renderArchivedFolders();
+}
+
+async function loadAnalytics() {
+    try {
+        const response = await fetch('/api/analytics');
+        if (!response.ok) throw new Error('Could not load insights. Try again in a moment.');
+        const data = await response.json();
+        renderAnalytics(data);
+    } catch (error) {
+        const message = escapeHtml(error.message || 'Could not load insights.');
+        insightsSummary.innerHTML = '';
+        [analyticsTypes, analyticsCategories, analyticsSubtopics].forEach((container) => {
+            container.innerHTML = `<p class="distribution-empty">${message}</p>`;
+        });
+    }
+}
+
+function renderAnalytics(data) {
+    const total = Number(data.total_mistakes) || 0;
+    const categories = Object.entries(data.category_distribution || {})
+        .sort((a, b) => b[1] - a[1]);
+    const topCategory = categories[0]?.[0] || '—';
+    const topType = total ? (data.most_common_type || '—') : '—';
+
+    insightsSummary.innerHTML = [
+        ['Active mistakes', total],
+        ['Most common type', topType],
+        ['Top category', topCategory],
+    ].map(([label, value]) => `
+        <div class="insight-metric">
+            <span class="insight-metric-label">${escapeHtml(label)}</span>
+            <strong class="insight-metric-value" title="${escapeAttr(value)}">${escapeHtml(value)}</strong>
+        </div>
+    `).join('');
+
+    renderDistribution(analyticsTypes, data.type_distribution || {});
+    renderDistribution(analyticsCategories, data.category_distribution || {});
+    renderDistribution(analyticsSubtopics, data.subtopic_distribution || {});
+}
+
+function renderDistribution(container, distribution) {
+    const entries = Object.entries(distribution)
+        .map(([label, count]) => [label, Number(count) || 0])
+        .filter(([, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+    if (!entries.length) {
+        container.innerHTML = '<p class="distribution-empty">Add a few mistakes to see patterns here.</p>';
+        return;
+    }
+
+    const max = entries[0][1];
+    container.innerHTML = entries.map(([label, count]) => {
+        const width = Math.max(2, Math.round((count / max) * 100));
+        const safeLabel = escapeHtml(label);
+        return `
+            <div class="distribution-row">
+                <div class="distribution-label">
+                    <span>${safeLabel}</span>
+                    <span class="distribution-value">${count}</span>
+                </div>
+                <div class="distribution-track" role="progressbar" aria-label="${escapeAttr(label)}" aria-valuemin="0" aria-valuemax="${max}" aria-valuenow="${count}">
+                    <span class="distribution-fill" style="width:${width}%"></span>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 async function loadSubtopics(category = '') {
@@ -711,6 +784,82 @@ function setupEventListeners() {
     editClearSolutionImageBtn.addEventListener('click', clearEditPastedSolutionImage);
 }
 
+function setupBackupControls() {
+    const downloadButton = document.getElementById('download-backup');
+    const chooseButton = document.getElementById('choose-restore-backup');
+    const fileInput = document.getElementById('restore-backup-file');
+    const modal = document.getElementById('restore-backup-modal');
+    const confirmButton = document.getElementById('confirm-restore-backup');
+    const cancelButton = document.getElementById('cancel-restore-backup');
+    const message = document.getElementById('restore-backup-message');
+    const status = document.getElementById('backup-status');
+    if (!downloadButton || !chooseButton || !fileInput || !modal) return;
+
+    let selectedFile = null;
+    downloadButton.addEventListener('click', () => {
+        window.location.assign('/api/backup');
+        showToast('Your backup download is starting', 'success');
+    });
+
+    chooseButton.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        if (file.size > 512 * 1024 * 1024) {
+            fileInput.value = '';
+            showToast('Backups must be smaller than 512 MB', 'error');
+            return;
+        }
+        selectedFile = file;
+        message.textContent = `“${file.name}” will replace your mistakes and uploaded images. A copy of your current data will be saved first.`;
+        modal.classList.remove('hidden');
+        confirmButton.focus();
+    });
+
+    confirmButton.addEventListener('click', async () => {
+        if (!selectedFile) return;
+        confirmButton.disabled = true;
+        confirmButton.textContent = 'Restoring…';
+        try {
+            const form = new FormData();
+            form.append('backup', selectedFile);
+            const response = await fetch('/api/restore', { method: 'POST', body: form });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.error || 'The backup could not be restored.');
+
+            closeRestoreBackupModal();
+            status.textContent = `Previous data saved as ${result.safety_backup} in your data folder's backups directory.`;
+            showToast('Backup restored', 'success');
+            await Promise.allSettled([
+                loadMistakes(),
+                loadArchivedMistakes(),
+                loadCategories(),
+                loadSubtopics(),
+                loadAnalytics(),
+            ]);
+        } catch (error) {
+            showToast(error.message || 'The backup could not be restored.', 'error');
+        } finally {
+            confirmButton.disabled = false;
+            confirmButton.textContent = 'Restore backup';
+        }
+    });
+
+    cancelButton.addEventListener('click', closeRestoreBackupModal);
+    modal.querySelector('.modal-overlay').addEventListener('click', closeRestoreBackupModal);
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeRestoreBackupModal();
+        }
+    });
+
+    function closeRestoreBackupModal() {
+        modal.classList.add('hidden');
+        selectedFile = null;
+        fileInput.value = '';
+    }
+}
+
 // ── Clipboard Paste Handling ──────────────────────────────────────
 function setupClipboardPaste() {
     const zones = [
@@ -1113,5 +1262,8 @@ function switchTab(tabId) {
     });
     if (tabId === 'archived-tab') {
         loadArchivedMistakes();
+    }
+    if (tabId === 'insights-tab') {
+        loadAnalytics();
     }
 }

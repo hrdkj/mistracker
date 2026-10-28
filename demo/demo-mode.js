@@ -141,6 +141,36 @@
     async function handle(method, path, query, req) {
         let match;
 
+        if (method === 'GET' && path === '/api/analytics') {
+            const active = db.filter((m) => m.archived !== 1);
+            const typeCounts = Object.fromEntries(DEMO_TYPES.map((type) => [type, 0]));
+            const categoryCounts = {};
+            const subtopicCounts = {};
+            for (const mistake of active) {
+                const type = mistake.mistake_type || 'Conceptual';
+                typeCounts[type] = (typeCounts[type] || 0) + 1;
+                const category = text(mistake.category) || 'Uncategorized';
+                categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+                const subtopics = (mistake.subtopics || []).filter(Boolean);
+                const labels = subtopics.length ? subtopics : ['Unspecified'];
+                for (const subtopic of labels) {
+                    const key = `${category} - ${subtopic}`;
+                    subtopicCounts[key] = (subtopicCounts[key] || 0) + 1;
+                }
+            }
+            const topTen = (counts) => Object.fromEntries(
+                Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10)
+            );
+            const mostCommon = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
+            return jsonResponse({
+                total_mistakes: active.length,
+                type_distribution: typeCounts,
+                category_distribution: topTen(categoryCounts),
+                subtopic_distribution: topTen(subtopicCounts),
+                most_common_type: active.length && mostCommon ? mostCommon[0] : null,
+            });
+        }
+
         if (method === 'GET' && path === '/api/mistakes') {
             return jsonResponse(filterMistakes(query));
         }

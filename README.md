@@ -16,6 +16,12 @@ uv run python main.py
 
 Opens at [http://127.0.0.1:8111](http://127.0.0.1:8111). The SQLite database is created automatically on first run.
 
+### Back up and restore
+
+Open **Insights** in the app to download a ZIP backup containing your mistakes
+and uploaded images, or restore from a previous backup. Before replacing data,
+the app saves the current database and images under `data/backups/`.
+
 ### Auto-start on login (Linux with systemd)
 
 Tired of running the server manually? This is opt-in — cloning the repo
