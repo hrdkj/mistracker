@@ -6,7 +6,7 @@ const path = require('path');
 const vm = require('vm');
 
 class Response {
-    constructor(body, init) { this.body = body; this.status = init?.status || 200; }
+    constructor(body, init) { this.body = body; this.status = init?.status || 200; this.ok = this.status >= 200 && this.status < 300; }
     async json() { return JSON.parse(this.body); }
 }
 class Request {
@@ -77,11 +77,11 @@ const check = (name, cond, extra) => {
     check('subtopics by category', JSON.stringify(await r.json()) === JSON.stringify(['Clustering K-Means', 'Perceptron']));
 
     // POST create
-    r = await fetchMock('/api/mistakes', { method: 'POST', body: JSON.stringify({ category: 'NewCat', subtopics: ['a', 'A', 'b'], mistake_type: 'HACKED', why_happened: null }) });
+    r = await fetchMock('/api/mistakes', { method: 'POST', body: JSON.stringify({ category: 'NewCat', subtopics: ['a', 'A', 'b'], mistake_type: 'Conceptual', why_happened: 'Lost track', how_to_avoid: 'Check each step' }) });
     const created = await r.json();
     check('POST -> 201', r.status === 201);
-    check('type coerced to Conceptual', created.mistake_type === 'Conceptual');
-    check('null why coerced to ""', created.why_happened === '');
+    check('valid type preserved', created.mistake_type === 'Conceptual');
+    check('explanation preserved', created.why_happened === 'Lost track');
     check('subtopics deduped case-insens', JSON.stringify(created.subtopics) === '["a","b"]');
     check('legacy fields mirrored', created.subtopic === 'a, b' && created.topic === 'NewCat');
 
@@ -106,6 +106,27 @@ const check = (name, cond, extra) => {
     check('unarchive-category count=3', (await r.json()).unarchived === 3);
     r = await fetchMock('/api/mistakes/archive-category', { method: 'POST', body: '{}' });
     check('missing category -> 400', r.status === 400);
+
+    // Validation and review parity with the Flask backend.
+    for (const body of [[], {}, { category: ' ' }, { category: 'Math', why_happened: null }, { mistake_type: 'HACKED' }]) {
+        r = await fetchMock('/api/mistakes', { method: 'POST', body: JSON.stringify(body) });
+        check('invalid mistake rejected: ' + JSON.stringify(body), r.status === 400);
+    }
+    r = await fetchMock('/api/reviews/due');
+    check('unreviewed active mistakes due', (await r.json()).mistakes.length === 7);
+    r = await fetchMock(`/api/mistakes/${created.id}/reviews`, { method: 'POST', body: '{"outcome":"solved"}' });
+    const attempt = await r.json();
+    check('review saved with seven-day interval', r.status === 201 && attempt.interval_days === 7);
+    r = await fetchMock(`/api/mistakes/${created.id}/reviews`, { method: 'POST', body: '{"outcome":"missed"}' });
+    check('duplicate review rejected', r.status === 409);
+    r = await fetchMock(`/api/mistakes/${created.id}/reviews`);
+    check('review history retained', (await r.json()).length === 1);
+    r = await fetchMock('/api/reviews/due');
+    check('reviewed mistake leaves due queue', !(await r.json()).mistakes.some(m => m.id === created.id));
+    await fetchMock(`/api/mistakes/${created.id}/archive`, { method: 'PATCH' });
+    r = await fetchMock(`/api/mistakes/${created.id}/reviews`, { method: 'POST', body: '{"outcome":"solved"}' });
+    check('archived mistake cannot be reviewed', r.status === 409);
+    await fetchMock(`/api/mistakes/${created.id}/unarchive`, { method: 'PATCH' });
 
     // Upload — multipart, exactly how main.js calls it (no explicit
     // Content-Type; the browser would add one for FormData bodies).

@@ -15,7 +15,7 @@ from flask import (
     send_from_directory,
 )
 
-from app import models
+from app import models, reviews
 from app.backup import BackupError, create_backup_archive, restore_backup_archive
 
 bp = Blueprint("main", __name__)
@@ -38,10 +38,49 @@ def _request_category() -> str | None:
     return request.args.get("category") or request.args.get("topic")
 
 
+def _validate_mistake(data, partial=False):
+    if not isinstance(data, dict) or not data:
+        return "Provide a JSON object with mistake details."
+    text_fields = (
+        "category",
+        "topic",
+        "subtopic",
+        "concept",
+        "question_image",
+        "solution_image",
+        "mistake_type",
+        "why_happened",
+        "how_to_avoid",
+    )
+    for field in text_fields:
+        if field in data and not isinstance(data[field], str):
+            return f"{field} must be text."
+    for field, label in (
+        ("category", "Category"),
+        ("why_happened", "Why it happened"),
+        ("how_to_avoid", "How to avoid it"),
+    ):
+        value = data.get(field, data.get("topic", "") if field == "category" else "")
+        supplied = field in data or (field == "category" and "topic" in data)
+        if (not partial or supplied) and not value.strip():
+            return f"{label} is required."
+    if "subtopics" in data:
+        value = data["subtopics"]
+        if not isinstance(value, (str, list)) or (
+            isinstance(value, list) and any(not isinstance(s, str) for s in value)
+        ):
+            return "Subtopics must be text or a list of text values."
+    if "mistake_type" in data and data["mistake_type"] not in models.MISTAKE_TYPES:
+        return "Choose a valid mistake type."
+    return None
+
+
 @bp.route("/")
 def index():
     """Serve the main page."""
-    return render_template("index.html", mistake_types=models.MISTAKE_TYPES, demo_mode=False)
+    return render_template(
+        "index.html", mistake_types=models.MISTAKE_TYPES, demo_mode=False
+    )
 
 
 @bp.route("/api/mistakes", methods=["GET"])
@@ -65,8 +104,9 @@ def get_mistakes():
 def add_mistake():
     """Add a new mistake."""
     data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
+    error = _validate_mistake(data)
+    if error:
+        return jsonify({"error": error}), 400
 
     mistake = models.add_mistake(data)
     return jsonify(mistake), 201
@@ -85,8 +125,9 @@ def get_mistake(mistake_id):
 def update_mistake(mistake_id):
     """Update an existing mistake."""
     data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
+    error = _validate_mistake(data, partial=True)
+    if error:
+        return jsonify({"error": error}), 400
 
     mistake = models.update_mistake(mistake_id, data)
     if mistake:
@@ -100,6 +141,29 @@ def delete_mistake(mistake_id):
     if models.delete_mistake(mistake_id):
         return jsonify({"success": True})
     return jsonify({"error": "Mistake not found"}), 404
+
+
+@bp.get("/api/reviews/due")
+def due_reviews():
+    return jsonify(reviews.get_due())
+
+
+@bp.route("/api/mistakes/<mistake_id>/reviews", methods=["GET", "POST"])
+def mistake_reviews(mistake_id):
+    if request.method == "GET":
+        if models.get_mistake_by_id(mistake_id) is None:
+            return jsonify({"error": "Mistake not found"}), 404
+        return jsonify(reviews.get_history(mistake_id))
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or data.get("outcome") not in reviews.OUTCOMES:
+        return jsonify({"error": "Choose solved, struggled, or missed."}), 400
+    try:
+        result = reviews.record(mistake_id, data["outcome"])
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 409
+    if result is None:
+        return jsonify({"error": "Mistake not found"}), 404
+    return jsonify(result), 201
 
 
 @bp.route("/api/mistakes/<mistake_id>/archive", methods=["PATCH"])
@@ -123,8 +187,12 @@ def unarchive_mistake(mistake_id):
 @bp.route("/api/mistakes/archive-category", methods=["POST"])
 def archive_category():
     """Archive all mistakes in a category."""
-    data = request.get_json()
-    if not data or not data.get("category"):
+    data = request.get_json(silent=True)
+    if (
+        not isinstance(data, dict)
+        or not isinstance(data.get("category"), str)
+        or not data["category"].strip()
+    ):
         return jsonify({"error": "Category is required"}), 400
     count = models.archive_category(data["category"])
     return jsonify({"archived": count})
@@ -133,8 +201,12 @@ def archive_category():
 @bp.route("/api/mistakes/unarchive-category", methods=["POST"])
 def unarchive_category():
     """Unarchive all mistakes in a category."""
-    data = request.get_json()
-    if not data or not data.get("category"):
+    data = request.get_json(silent=True)
+    if (
+        not isinstance(data, dict)
+        or not isinstance(data.get("category"), str)
+        or not data["category"].strip()
+    ):
         return jsonify({"error": "Category is required"}), 400
     count = models.unarchive_category(data["category"])
     return jsonify({"unarchived": count})
@@ -201,9 +273,7 @@ def restore_backup():
         return jsonify({"error": str(exc)}), 400
     except (OSError, sqlite3.Error):
         return jsonify(
-            {
-                "error": "The restore could not be completed. Your current data was kept."
-            }
+            {"error": "The restore could not be completed. Your current data was kept."}
         ), 500
     return jsonify({"success": True, "safety_backup": safety_backup})
 
@@ -252,7 +322,7 @@ def upload_image():
 
     # Method 2: Base64 JSON payload
     data = request.get_json(silent=True)
-    if data and data.get("image"):
+    if isinstance(data, dict) and isinstance(data.get("image"), str) and data["image"]:
         image_data = data["image"]
         if not image_data.startswith("data:image"):
             return jsonify({"error": "Invalid image data"}), 400

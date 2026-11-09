@@ -103,17 +103,61 @@ function showToast(message, type = 'success') {
 }
 
 // ── API Functions ─────────────────────────────────────────────────
-async function loadMistakes() {
-    const params = new URLSearchParams();
-    params.append('archived', 'false');
-    if (currentFilters.category) params.append('category', currentFilters.category);
-    if (currentFilters.subtopic) params.append('subtopic', currentFilters.subtopic);
-    if (currentFilters.mistake_type) params.append('mistake_type', currentFilters.mistake_type);
+async function requestJSON(url, options) {
+    let response;
+    try {
+        response = await fetch(url, options);
+    } catch {
+        throw new Error('Could not reach Mistracker. Check the server and try again.');
+    }
+    let data;
+    try { data = await response.json(); } catch {
+        throw new Error(`The server returned an unreadable response (${response.status}). Try again.`);
+    }
+    if (!response.ok) throw new Error(data.error || `Request failed (${response.status}). Try again.`);
+    return data;
+}
 
-    const response = await fetch(`/api/mistakes?${params}`);
-    mistakes = await response.json();
-    hydrateLastEntryDetailsFromMistakes();
-    renderTable();
+async function runAction(control, action) {
+    if (control.dataset.busy) return;
+    if (Number(control.dataset.uploads || 0)) {
+        showToast('Wait for the image upload to finish before saving.', 'error');
+        return;
+    }
+    control.dataset.busy = 'true';
+    control.setAttribute('aria-busy', 'true');
+    const errorBox = control.querySelector('.form-error');
+    if (errorBox) errorBox.textContent = '';
+    const controls = control.matches('button') ? [control] : [...control.querySelectorAll('input, textarea, select, button')];
+    const disabled = controls.map(element => element.disabled);
+    controls.forEach(element => { element.disabled = true; });
+    try {
+        await action();
+    } catch (error) {
+        if (errorBox) errorBox.textContent = error.message;
+        showToast(error.message, 'error');
+    } finally {
+        delete control.dataset.busy;
+        control.removeAttribute('aria-busy');
+        controls.forEach((element, index) => { element.disabled = disabled[index]; });
+    }
+}
+
+async function loadMistakes() {
+    try {
+        const params = new URLSearchParams();
+        params.append('archived', 'false');
+        if (currentFilters.category) params.append('category', currentFilters.category);
+        if (currentFilters.subtopic) params.append('subtopic', currentFilters.subtopic);
+        if (currentFilters.mistake_type) params.append('mistake_type', currentFilters.mistake_type);
+
+        const result = await requestJSON(`/api/mistakes?${params}`);
+        mistakes = result;
+        hydrateLastEntryDetailsFromMistakes();
+        renderTable();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 
@@ -163,27 +207,33 @@ function hydrateLastEntryDetailsFromMistakes() {
 }
 
 async function loadCategories() {
-    const response = await fetch('/api/categories?archived=false');
-    categories = await response.json();
-    renderCategoryFilter();
-    renderCategorySuggestions();
+    try {
+        const result = await requestJSON('/api/categories?archived=false');
+        categories = result;
+        renderCategoryFilter();
+        renderCategorySuggestions();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 async function loadArchivedMistakes() {
-    const params = new URLSearchParams();
-    params.append('archived', 'true');
+    try {
+        const params = new URLSearchParams();
+        params.append('archived', 'true');
 
-    const response = await fetch(`/api/mistakes?${params}`);
-    archivedMistakes = await response.json();
-    renderArchivedFolders();
+        const result = await requestJSON(`/api/mistakes?${params}`);
+        archivedMistakes = result;
+        renderArchivedFolders();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 async function loadAnalytics() {
     try {
-        const response = await fetch('/api/analytics');
-        if (!response.ok) throw new Error('Could not load insights. Try again in a moment.');
-        const data = await response.json();
-        renderAnalytics(data);
+        const result = await requestJSON('/api/analytics');
+        renderAnalytics(result);
     } catch (error) {
         const message = escapeHtml(error.message || 'Could not load insights.');
         insightsSummary.innerHTML = '';
@@ -247,16 +297,20 @@ function renderDistribution(container, distribution) {
 }
 
 async function loadSubtopics(category = '') {
-    subtopics = await fetchSubtopicsByCategory(category);
-    renderSubtopicFilter();
+    try {
+        subtopics = await fetchSubtopicsByCategory(category);
+        renderSubtopicFilter();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 async function fetchSubtopicsByCategory(category = '') {
     const params = new URLSearchParams();
     params.append('archived', 'false');
     if (category) params.append('category', category);
-    const response = await fetch(`/api/subtopics?${params}`);
-    return response.json();
+    const result = await requestJSON(`/api/subtopics?${params}`);
+    return result;
 }
 
 function renderSubtopicDropdown(selectId, items) {
@@ -272,13 +326,21 @@ function renderSubtopicDropdown(selectId, items) {
 }
 
 async function loadSubtopicsForAddForm(category = '') {
-    const items = await fetchSubtopicsByCategory(category);
-    renderSubtopicDropdown('new-subtopic-dropdown', items);
+    try {
+        const items = await fetchSubtopicsByCategory(category);
+        renderSubtopicDropdown('new-subtopic-dropdown', items);
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 async function loadSubtopicsForEditForm(category = '') {
-    const items = await fetchSubtopicsByCategory(category);
-    renderSubtopicDropdown('edit-subtopic-dropdown', items);
+    try {
+        const items = await fetchSubtopicsByCategory(category);
+        renderSubtopicDropdown('edit-subtopic-dropdown', items);
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 function normalizeSubtopicsInput(value) {
@@ -306,44 +368,43 @@ function appendSubtopicToInput(inputId, subtopic) {
 
 
 async function apiAddMistake(data) {
-    const response = await fetch('/api/mistakes', {
+    const result = await requestJSON('/api/mistakes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
     });
-    return response.json();
+    return result;
 }
 
 async function apiUpdateMistake(id, data) {
-    const response = await fetch(`/api/mistakes/${id}`, {
+    const result = await requestJSON(`/api/mistakes/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
     });
-    return response.json();
+    return result;
 }
 
 async function apiDeleteMistake(id) {
-    const response = await fetch(`/api/mistakes/${id}`, { method: 'DELETE' });
-    return response.json();
+    const result = await requestJSON(`/api/mistakes/${id}`, { method: 'DELETE' });
+    return result;
 }
 
 async function apiArchiveMistake(id) {
-    const response = await fetch(`/api/mistakes/${id}/archive`, { method: 'PATCH' });
-    return response.json();
+    const result = await requestJSON(`/api/mistakes/${id}/archive`, { method: 'PATCH' });
+    return result;
 }
 
 async function apiUnarchiveMistake(id) {
-    const response = await fetch(`/api/mistakes/${id}/unarchive`, { method: 'PATCH' });
-    return response.json();
+    const result = await requestJSON(`/api/mistakes/${id}/unarchive`, { method: 'PATCH' });
+    return result;
 }
 
 // ── Upload image via /api/upload ──────────────────────────────────
 async function uploadImageFile(file) {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await fetch('/api/upload', { method: 'POST', body: formData });
-    const result = await response.json();
+    const result = await requestJSON('/api/upload', { method: 'POST', body: formData });
     return result.url || '';
 }
 
@@ -681,55 +742,59 @@ function setupEventListeners() {
     // Add form
     addForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const categoryValue = document.getElementById('new-category').value;
-        const subtopicValue = document.getElementById('new-subtopics').value;
-        const subtopicList = normalizeSubtopicsInput(subtopicValue);
+        await runAction(addForm, async () => {
+            const categoryValue = document.getElementById('new-category').value;
+            const subtopicValue = document.getElementById('new-subtopics').value;
+            const subtopicList = normalizeSubtopicsInput(subtopicValue);
 
-        const data = {
-            category: categoryValue,
-            subtopics: subtopicList,
-            concept: document.getElementById('new-concept').value.trim(),
-            mistake_type: document.getElementById('new-type').value,
-            question_image: newImageInput.value,
-            solution_image: newSolutionImageInput.value,
-            why_happened: document.getElementById('new-why').value,
-            how_to_avoid: document.getElementById('new-avoid').value
-        };
+            const data = {
+                category: categoryValue,
+                subtopics: subtopicList,
+                concept: document.getElementById('new-concept').value.trim(),
+                mistake_type: document.getElementById('new-type').value,
+                question_image: newImageInput.value,
+                solution_image: newSolutionImageInput.value,
+                why_happened: document.getElementById('new-why').value,
+                how_to_avoid: document.getElementById('new-avoid').value
+            };
 
-        await apiAddMistake(data);
-        saveEntryDetails(categoryValue, subtopicValue);
-        showToast('Mistake added successfully!', 'success');
+            await apiAddMistake(data);
+            saveEntryDetails(categoryValue, subtopicValue);
+            showToast('Mistake added successfully!', 'success');
 
-        addForm.reset();
-        clearPastedImage();
-        clearPastedSolutionImage();
-        applySavedEntryDetails();
-        loadMistakes();
-        loadCategories();
-        loadSubtopics(document.getElementById('new-category').value);
-        switchTab('mistakes-tab');
+            addForm.reset();
+            clearPastedImage();
+            clearPastedSolutionImage();
+            applySavedEntryDetails();
+            loadMistakes();
+            loadCategories();
+            loadSubtopics(document.getElementById('new-category').value);
+            switchTab('mistakes-tab');
+        });
     });
 
     // Edit form
     editForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const id = document.getElementById('edit-id').value;
-        const data = {
-            category: document.getElementById('edit-category').value,
-            subtopics: normalizeSubtopicsInput(document.getElementById('edit-subtopics').value),
-            concept: document.getElementById('edit-concept').value.trim(),
-            mistake_type: document.getElementById('edit-type').value,
-            question_image: editImageInput.value,
-            solution_image: editSolutionImageInput.value,
-            why_happened: document.getElementById('edit-why').value,
-            how_to_avoid: document.getElementById('edit-avoid').value
-        };
-        await apiUpdateMistake(id, data);
-        closeEditModal();
-        showToast('Mistake updated!', 'success');
-        loadMistakes();
-        loadCategories();
-        loadSubtopics();
+        await runAction(editForm, async () => {
+            const id = document.getElementById('edit-id').value;
+            const data = {
+                category: document.getElementById('edit-category').value,
+                subtopics: normalizeSubtopicsInput(document.getElementById('edit-subtopics').value),
+                concept: document.getElementById('edit-concept').value.trim(),
+                mistake_type: document.getElementById('edit-type').value,
+                question_image: editImageInput.value,
+                solution_image: editSolutionImageInput.value,
+                why_happened: document.getElementById('edit-why').value,
+                how_to_avoid: document.getElementById('edit-avoid').value
+            };
+            await apiUpdateMistake(id, data);
+            closeEditModal(true);
+            showToast('Mistake updated!', 'success');
+            loadMistakes();
+            loadCategories();
+            loadSubtopics();
+        });
     });
 
     // Cancel edit
@@ -737,16 +802,18 @@ function setupEventListeners() {
 
     // Delete
     document.getElementById('confirm-delete').addEventListener('click', async () => {
-        if (deleteTargetId) {
-            await apiDeleteMistake(deleteTargetId);
-            deleteTargetId = null;
-            closeDeleteModal();
-            showToast('Mistake deleted', 'info');
-            loadMistakes();
-            loadCategories();
-            loadSubtopics();
-            loadArchivedMistakes();
-        }
+        await runAction(document.getElementById('confirm-delete'), async () => {
+            if (deleteTargetId) {
+                await apiDeleteMistake(deleteTargetId);
+                deleteTargetId = null;
+                closeDeleteModal();
+                showToast('Mistake deleted', 'info');
+                loadMistakes();
+                loadCategories();
+                loadSubtopics();
+                loadArchivedMistakes();
+            }
+        });
     });
     document.getElementById('cancel-delete').addEventListener('click', closeDeleteModal);
 
@@ -760,13 +827,17 @@ function setupEventListeners() {
     // Modal close buttons + overlay clicks
     document.querySelectorAll('.modal-close-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            btn.closest('.modal').classList.add('hidden');
+            const modal = btn.closest('.modal');
+            if (modal === editModal) closeEditModal();
+            else modal.classList.add('hidden');
         });
     });
 
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
         overlay.addEventListener('click', () => {
-            overlay.closest('.modal').classList.add('hidden');
+            const modal = overlay.closest('.modal');
+            if (modal === editModal) closeEditModal();
+            else modal.classList.add('hidden');
         });
     });
 
@@ -823,9 +894,7 @@ function setupBackupControls() {
         try {
             const form = new FormData();
             form.append('backup', selectedFile);
-            const response = await fetch('/api/restore', { method: 'POST', body: form });
-            const result = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(result.error || 'The backup could not be restored.');
+            const result = await requestJSON('/api/restore', { method: 'POST', body: form });
 
             closeRestoreBackupModal();
             status.textContent = `Previous data saved as ${result.safety_backup} in your data folder's backups directory.`;
@@ -953,20 +1022,29 @@ function handleDrop(e, imageType, isEdit) {
 async function processImage(file, imageType, isEdit) {
     if (!file) return;
     const zone = getZoneByType(imageType, isEdit);
+    const form = isEdit ? editForm : addForm;
+    if (form.dataset.busy || zone.dataset.busy) return;
+    if (file.size > 16 * 1024 * 1024) { showPasteError(zone, 'Image too large (max 16 MB)'); return; }
 
-    if (file.size > 10 * 1024 * 1024) { showPasteError(zone, 'Image too large (max 10MB)'); return; }
-
+    zone.dataset.busy = 'true';
+    form.dataset.uploads = Number(form.dataset.uploads || 0) + 1;
+    const submit = form.querySelector('[type="submit"]');
+    const clear = zone.querySelector('.btn-clear');
+    submit.disabled = true;
+    clear.disabled = true;
     try {
         updatePasteHint(zone, 'Uploading…');
         const url = await uploadImageFile(file);
-        if (url) {
-            displayImage(url, imageType, isEdit);
-        } else {
-            showPasteError(zone, 'Upload failed');
-        }
-    } catch (err) {
-        console.error('Upload error:', err);
-        showPasteError(zone, 'Upload failed');
+        if (!url) throw new Error('Upload failed. Please try again.');
+        displayImage(url, imageType, isEdit);
+    } catch (error) {
+        showPasteError(zone, error.message);
+        showToast(error.message, 'error');
+    } finally {
+        delete zone.dataset.busy;
+        form.dataset.uploads = Number(form.dataset.uploads) - 1;
+        submit.disabled = Number(form.dataset.uploads) > 0;
+        clear.disabled = false;
     }
 }
 
@@ -1045,49 +1123,65 @@ function clearEditPastedSolutionImage() {
 
 // ── Archive / Unarchive ────────────────────────────────────────────
 async function handleArchive(id) {
-    await apiArchiveMistake(id);
-    showToast('Mistake archived', 'info');
-    loadMistakes();
-    loadCategories();
-    loadSubtopics();
-    loadArchivedMistakes();
+    try {
+        await apiArchiveMistake(id);
+        showToast('Mistake archived', 'info');
+        loadMistakes();
+        loadCategories();
+        loadSubtopics();
+        loadArchivedMistakes();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 async function handleUnarchive(id) {
-    await apiUnarchiveMistake(id);
-    showToast('Mistake restored', 'success');
-    loadMistakes();
-    loadCategories();
-    loadSubtopics();
-    loadArchivedMistakes();
+    try {
+        await apiUnarchiveMistake(id);
+        showToast('Mistake restored', 'success');
+        loadMistakes();
+        loadCategories();
+        loadSubtopics();
+        loadArchivedMistakes();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 async function handleArchiveTopic(category) {
-    await fetch('/api/mistakes/archive-category', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category })
-    });
-    showToast(`"${category}" archived`, 'info');
-    closeArchiveTopicModal();
-    loadMistakes();
-    loadCategories();
-    loadSubtopics();
-    loadArchivedMistakes();
+    try {
+        await requestJSON('/api/mistakes/archive-category', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category })
+        });
+        showToast(`"${category}" archived`, 'info');
+        closeArchiveTopicModal();
+        loadMistakes();
+        loadCategories();
+        loadSubtopics();
+        loadArchivedMistakes();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 async function handleRestoreTopic(category) {
-    await fetch('/api/mistakes/unarchive-category', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category })
-    });
-    showToast(`"${category}" restored`, 'success');
-    closeRestoreTopicModal();
-    loadMistakes();
-    loadCategories();
-    loadSubtopics();
-    loadArchivedMistakes();
+    try {
+        await requestJSON('/api/mistakes/unarchive-category', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category })
+        });
+        showToast(`"${category}" restored`, 'success');
+        closeRestoreTopicModal();
+        loadMistakes();
+        loadCategories();
+        loadSubtopics();
+        loadArchivedMistakes();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
 }
 
 function openArchiveTopicModal() {
@@ -1134,6 +1228,7 @@ function closeRestoreTopicModal() {
 
 // ── Modal Functions ───────────────────────────────────────────────
 function openEditModal(id) {
+    if (editForm.dataset.busy || Number(editForm.dataset.uploads || 0)) return;
     const m = mistakes.find(x => x.id === id);
     if (!m) return;
 
@@ -1165,7 +1260,8 @@ function openEditModal(id) {
     editModal.classList.remove('hidden');
 }
 
-function closeEditModal() {
+function closeEditModal(saved = false) {
+    if (saved !== true && (editForm.dataset.busy || Number(editForm.dataset.uploads || 0))) return;
     editModal.classList.add('hidden');
     editForm.reset();
     clearEditPastedImage();
@@ -1262,6 +1358,9 @@ function switchTab(tabId) {
     });
     if (tabId === 'archived-tab') {
         loadArchivedMistakes();
+    }
+    if (tabId === 'review-tab') {
+        loadReviewQueue();
     }
     if (tabId === 'insights-tab') {
         loadAnalytics();

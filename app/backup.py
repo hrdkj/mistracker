@@ -7,11 +7,12 @@ import sqlite3
 import stat
 import tempfile
 import zipfile
+from contextlib import closing
 from datetime import datetime
 from pathlib import PurePosixPath
 from urllib.parse import quote
 
-from app import models
+from app import models, reviews
 
 BACKUP_FORMAT = "mistracker-backup"
 BACKUP_VERSION = 1
@@ -184,6 +185,17 @@ def _extract_and_validate(source, stage: str) -> tuple[str, str]:
                 raise BackupError("A file in the backup could not be read.") from exc
 
     _validate_database(staged_db)
+    # Older backups have no review history. Upgrade the staged copy before
+    # replacing live data so the restored app works without a restart.
+    try:
+        with closing(sqlite3.connect(staged_db)) as conn:
+            reviews.init_schema(conn)
+            conn.execute(
+                "SELECT outcome, reviewed_at, next_review_date, interval_days FROM reviews LIMIT 1"
+            )
+            conn.commit()
+    except sqlite3.DatabaseError as exc:
+        raise BackupError("The backup review history does not match this app.") from exc
     return staged_db, staged_images
 
 

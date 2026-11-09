@@ -13,7 +13,7 @@
 </head>
 <body>
     <!-- Toast Container -->
-    <div id="toast-container"></div>
+    <div id="toast-container" role="status" aria-live="polite"></div>
 
     <div class="app-shell">
         <!-- Header -->
@@ -32,6 +32,7 @@
                     <button class="tab-btn" data-tab="add-tab">
                         <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add New
                     </button>
+                    <button class="tab-btn" data-tab="review-tab">Review today</button>
                     <button class="tab-btn" data-tab="archived-tab">
                         <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg> Archived
                     </button>
@@ -146,11 +147,56 @@
                 {% endif %}
             </div>
 
+            <div id="review-tab" class="tab-content">
+                <section class="review-panel" aria-labelledby="review-title">
+                    <div class="review-heading">
+                        <div>
+                            <h2 id="review-title">Review today</h2>
+                            <p>Try the question before revealing your solution and notes.</p>
+                        </div>
+                        <button type="button" class="btn btn-ghost" id="refresh-reviews">Refresh queue</button>
+                    </div>
+                    <p id="review-status" role="status" aria-live="polite"></p>
+                    <p id="review-error" class="form-error" role="alert"></p>
+                    <article id="review-card" class="hidden">
+                        <p id="review-category" class="review-category"></p>
+                        <h3 id="review-prompt" tabindex="-1"></h3>
+                        <p id="review-previous" class="review-meta"></p>
+                        <img id="review-question" class="review-image hidden" alt="Question to practice">
+                        <p id="review-no-question" class="review-meta hidden">No question image was saved. Recall the concept, or work through a related example before revealing your notes.</p>
+                        <button type="button" class="btn btn-primary" id="reveal-review" aria-expanded="false" aria-controls="review-answer">Reveal solution &amp; notes</button>
+                        <div id="review-answer" class="hidden">
+                            <h3 id="review-answer-title" tabindex="-1">Solution &amp; notes</h3>
+                            <p id="review-concept"></p>
+                            <img id="review-solution" class="review-image hidden" alt="Saved solution">
+                            <h4>Why it happened</h4>
+                            <p id="review-why" class="review-note"></p>
+                            <h4>How to avoid it</h4>
+                            <p id="review-avoid" class="review-note"></p>
+                            <fieldset id="review-outcomes">
+                                <legend>How did this attempt go?</legend>
+                                <div class="review-actions">
+                                    <button type="button" class="btn btn-primary" data-outcome="solved">Solved</button>
+                                    <button type="button" class="btn btn-ghost" data-outcome="struggled">Struggled</button>
+                                    <button type="button" class="btn btn-ghost" data-outcome="missed">Missed</button>
+                                </div>
+                                <p class="review-meta">Missed: tomorrow · Struggled: 3 days · Solved: 7 days, increasing to 30 days after repeated successes.</p>
+                            </fieldset>
+                            <details id="review-history">
+                                <summary>Previous attempts</summary>
+                                <ul id="review-history-list"></ul>
+                            </details>
+                        </div>
+                    </article>
+                </section>
+            </div>
+
             <!-- Tab Content: Add New Mistake -->
             <div id="add-tab" class="tab-content">
                 <section class="form-card">
                     <h2 class="form-title">Add Mistake</h2>
                     <form id="add-form">
+                        <p class="form-error" role="alert"></p>
                         <div class="form-row form-row-images">
                             <div class="form-group">
                                 <label>Question Image <span class="label-hint">(Paste or drop)</span></label>
@@ -335,6 +381,7 @@
             <button class="modal-close-btn">✕</button>
             <h2>Edit Mistake</h2>
             <form id="edit-form">
+                <p class="form-error" role="alert"></p>
                 <input type="hidden" id="edit-id">
                 <div class="form-row form-row-images">
                     <div class="form-group">
@@ -462,5 +509,6 @@
     {% endif %}
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/reviews.js') }}"></script>
 </body>
 </html>

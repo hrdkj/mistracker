@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "scripts": {
+    "test:browser": "node tests/browser.cjs",
+    "test:demo": "node demo/test_demo_mode.js"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

@@ -56,6 +56,7 @@ def _get_conn() -> sqlite3.Connection:
     """Get a SQLite connection with row factory."""
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
@@ -66,6 +67,8 @@ def init_db() -> None:
     os.makedirs(IMAGES_DIR, exist_ok=True)
     conn = _get_conn()
     conn.execute(CREATE_TABLE)
+    from app.reviews import init_schema
+    init_schema(conn)
     try:
         conn.execute(
             "ALTER TABLE mistakes ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"

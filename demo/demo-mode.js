@@ -9,6 +9,14 @@
     const DEMO_TYPES = (window.DEMO_DATA && window.DEMO_DATA.mistakeTypes) || [];
     let db = JSON.parse(JSON.stringify((window.DEMO_DATA && window.DEMO_DATA.mistakes) || []));
     let fallbackCounter = 0;
+    let reviews = [];
+    let reviewId = 0;
+    const outcomes = ['solved', 'struggled', 'missed'];
+    function reviewDate(days = 0) {
+        const value = new Date();
+        value.setDate(value.getDate() + days);
+        return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+    }
 
     const lc = (s) => String(s == null ? '' : s).toLowerCase();
     const text = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -80,6 +88,26 @@
         return out;
     }
 
+    function validateMistake(data, partial = false) {
+        if (!data || typeof data !== 'object' || Array.isArray(data) || !Object.keys(data).length) {
+            return 'Provide a JSON object with mistake details.';
+        }
+        for (const field of ['category', 'topic', 'subtopic', 'concept', 'question_image', 'solution_image', 'mistake_type', 'why_happened', 'how_to_avoid']) {
+            if (field in data && typeof data[field] !== 'string') return `${field} must be text.`;
+        }
+        for (const [field, label] of [['category', 'Category'], ['why_happened', 'Why it happened'], ['how_to_avoid', 'How to avoid it']]) {
+            const value = data[field] ?? (field === 'category' ? data.topic : '') ?? '';
+            const supplied = field in data || (field === 'category' && 'topic' in data);
+            if ((!partial || supplied) && !value.trim()) return `${label} is required.`;
+        }
+        if ('subtopics' in data && typeof data.subtopics !== 'string' &&
+            (!Array.isArray(data.subtopics) || data.subtopics.some(item => typeof item !== 'string'))) {
+            return 'Subtopics must be text or a list of text values.';
+        }
+        if ('mistake_type' in data && !DEMO_TYPES.includes(data.mistake_type)) return 'Choose a valid mistake type.';
+        return null;
+    }
+
     const byDateDesc = (a, b) => String(b.date_added).localeCompare(String(a.date_added));
 
     function filterMistakes(q) {
@@ -141,6 +169,41 @@
     async function handle(method, path, query, req) {
         let match;
 
+        if (method === 'GET' && path === '/api/reviews/due') {
+            const active = db.filter(m => m.archived !== 1).map(m => {
+                const history = reviews.filter(r => r.mistake_id === m.id);
+                const latest = history[history.length - 1];
+                return { ...m, last_outcome: latest?.outcome || null,
+                    next_review_date: latest?.next_review_date || null, review_count: history.length };
+            });
+            const due = active.filter(m => !m.next_review_date || m.next_review_date <= reviewDate());
+            due.sort((a, b) => (a.next_review_date || '').localeCompare(b.next_review_date || '') ||
+                a.date_added.localeCompare(b.date_added) || a.id.localeCompare(b.id));
+            const upcoming = active.map(m => m.next_review_date).filter(d => d && d > reviewDate()).sort();
+            return jsonResponse({ mistakes: due, next_due_date: upcoming[0] || null });
+        }
+
+        if ((match = path.match(/^\/api\/mistakes\/([^/]+)\/reviews$/))) {
+            const id = decodeURIComponent(match[1]);
+            const row = db.find(m => m.id === id);
+            const history = reviews.filter(r => r.mistake_id === id);
+            if (method === 'GET') return row ? jsonResponse(history.reverse()) : notFound();
+            if (method === 'POST') {
+                const body = await req.json();
+                if (!body || !outcomes.includes(body.outcome)) return jsonResponse({ error: 'Choose solved, struggled, or missed.' }, 400);
+                if (!row) return notFound();
+                if (row.archived) return jsonResponse({ error: 'This mistake is archived. Refresh the review queue.' }, 409);
+                const previous = history[history.length - 1];
+                if (previous && previous.next_review_date > reviewDate()) return jsonResponse({ error: 'This review is already saved. Refresh the review queue.' }, 409);
+                let interval = { missed: 1, struggled: 3, solved: 7 }[body.outcome];
+                if (body.outcome === 'solved' && previous?.outcome === 'solved') interval = Math.min(30, previous.interval_days * 2);
+                const attempt = { id: ++reviewId, mistake_id: id, outcome: body.outcome,
+                    reviewed_at: new Date().toISOString(), next_review_date: reviewDate(interval), interval_days: interval };
+                reviews.push(attempt);
+                return jsonResponse(attempt, 201);
+            }
+        }
+
         if (method === 'GET' && path === '/api/analytics') {
             const active = db.filter((m) => m.archived !== 1);
             const typeCounts = Object.fromEntries(DEMO_TYPES.map((type) => [type, 0]));
@@ -197,6 +260,8 @@
 
         if (method === 'POST' && path === '/api/mistakes') {
             const body = await req.json();
+            const error = validateMistake(body);
+            if (error) return jsonResponse({ error }, 400);
             const blank = {
                 id: null,
                 category: '',
@@ -232,7 +297,7 @@
             (match = path.match(/^\/api\/mistakes\/(un)?archive-category$/))
         ) {
             const body = await req.json().catch(() => ({}));
-            if (!body.category) return jsonResponse({ error: 'Category is required' }, 400);
+            if (!body || typeof body.category !== 'string' || !body.category.trim()) return jsonResponse({ error: 'Category is required' }, 400);
             const target = match[1] ? 0 : 1;
             let count = 0;
             for (const m of db) {
@@ -253,11 +318,15 @@
 
             if (method === 'GET') return jsonResponse(db[idx]);
             if (method === 'PUT') {
-                db[idx] = applyWrite(id, await req.json(), db[idx]);
+                const body = await req.json();
+                const error = validateMistake(body, true);
+                if (error) return jsonResponse({ error }, 400);
+                db[idx] = applyWrite(id, body, db[idx]);
                 return jsonResponse(db[idx]);
             }
             if (method === 'DELETE') {
                 db.splice(idx, 1);
+                reviews = reviews.filter(r => r.mistake_id !== id);
                 return jsonResponse({ success: true });
             }
         }
@@ -296,6 +365,7 @@
                 if (result !== undefined) return result;
             }
         } catch (err) {
+            if (err instanceof SyntaxError) return jsonResponse({ error: 'Provide valid JSON.' }, 400);
             console.error('[demo-mode]', err);
             return jsonResponse({ error: 'Demo mode error' }, 500);
         }
