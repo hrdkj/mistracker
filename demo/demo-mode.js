@@ -92,8 +92,18 @@
         if (!data || typeof data !== 'object' || Array.isArray(data) || !Object.keys(data).length) {
             return 'Provide a JSON object with mistake details.';
         }
-        for (const field of ['category', 'topic', 'subtopic', 'concept', 'question_image', 'solution_image', 'mistake_type', 'why_happened', 'how_to_avoid']) {
+        for (const field of ['category', 'topic', 'subtopic', 'concept', 'question_image', 'solution_image', 'source_url', 'mistake_type', 'why_happened', 'how_to_avoid']) {
             if (field in data && typeof data[field] !== 'string') return `${field} must be text.`;
+        }
+        const source = text(data.source_url);
+        if (source) {
+            try {
+                if (!/^https?:\/\/[^/]/i.test(source) || /[\s\\\p{C}]/u.test(source) || new URL(source).port === '0') {
+                    return 'Enter an HTTP or HTTPS source link.';
+                }
+            } catch {
+                return 'Enter an HTTP or HTTPS source link.';
+            }
         }
         for (const [field, label] of [['category', 'Category'], ['why_happened', 'Why it happened'], ['how_to_avoid', 'How to avoid it']]) {
             const value = data[field] ?? (field === 'category' ? data.topic : '') ?? '';
@@ -157,6 +167,7 @@
             topic: category,
             question_image: 'question_image' in src ? text(src.question_image) : existing.question_image,
             solution_image: 'solution_image' in src ? text(src.solution_image) : existing.solution_image,
+            source_url: 'source_url' in src ? text(src.source_url) : (existing.source_url || ''),
             mistake_type: mistakeType,
             why_happened: 'why_happened' in src ? text(src.why_happened) : existing.why_happened,
             how_to_avoid: 'how_to_avoid' in src ? text(src.how_to_avoid) : existing.how_to_avoid,

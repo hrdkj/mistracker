@@ -185,7 +185,7 @@ def _extract_and_validate(source, stage: str) -> tuple[str, str]:
                 raise BackupError("A file in the backup could not be read.") from exc
 
     _validate_database(staged_db)
-    # Older backups have no review history. Upgrade the staged copy before
+    # Older backups may lack review history or source links. Upgrade before
     # replacing live data so the restored app works without a restart.
     try:
         with closing(sqlite3.connect(staged_db)) as conn:
@@ -193,9 +193,10 @@ def _extract_and_validate(source, stage: str) -> tuple[str, str]:
             conn.execute(
                 "SELECT outcome, reviewed_at, next_review_date, interval_days FROM reviews LIMIT 1"
             )
+            models.upgrade_mistake_columns(conn)
             conn.commit()
     except sqlite3.DatabaseError as exc:
-        raise BackupError("The backup review history does not match this app.") from exc
+        raise BackupError("The backup database could not be upgraded.") from exc
     return staged_db, staged_images
 
 

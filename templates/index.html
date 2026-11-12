@@ -156,7 +156,22 @@
                         </div>
                         <button type="button" class="btn btn-ghost" id="refresh-reviews">Refresh queue</button>
                     </div>
-                    <p id="review-status" role="status" aria-live="polite"></p>
+                    <div class="review-controls">
+                        <div class="form-group">
+                            <label for="review-category-filter">Category</label>
+                            <select id="review-category-filter" disabled>
+                                <option value="">All categories</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="review-subtopic-filter">Subtopic</label>
+                            <select id="review-subtopic-filter" disabled>
+                                <option value="">All subtopics</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn btn-ghost" id="start-review-session" disabled>Start 5-card session</button>
+                    </div>
+                    <p id="review-status" role="status" aria-live="polite" tabindex="-1"></p>
                     <p id="review-error" class="form-error" role="alert"></p>
                     <article id="review-card" class="hidden">
                         <p id="review-category" class="review-category"></p>
@@ -170,9 +185,10 @@
                             <p id="review-concept"></p>
                             <img id="review-solution" class="review-image hidden" alt="Saved solution">
                             <h4>Why it happened</h4>
-                            <p id="review-why" class="review-note"></p>
+                            <div id="review-why" class="review-note"></div>
                             <h4>How to avoid it</h4>
-                            <p id="review-avoid" class="review-note"></p>
+                            <div id="review-avoid" class="review-note"></div>
+                            <a id="review-source" class="source-link hidden" target="_blank" rel="noopener noreferrer">Open source</a>
                             <fieldset id="review-outcomes">
                                 <legend>How did this attempt go?</legend>
                                 <div class="review-actions">
@@ -260,6 +276,10 @@
                                     {% endfor %}
                                 </select>
                             </div>
+                            <div class="form-group">
+                                <label for="new-source-url">Source link <span class="label-hint">(optional)</span></label>
+                                <input type="url" id="new-source-url" placeholder="https://…">
+                            </div>
                         </div>
 
                         <div class="form-row">
@@ -273,8 +293,9 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-primary btn-large">
+                        <button type="submit" class="btn btn-primary btn-large" aria-keyshortcuts="Control+Enter">
                             <span>Add Mistake</span>
+                            <kbd>Ctrl+Enter</kbd>
                         </button>
                     </form>
                 </section>
@@ -435,6 +456,10 @@
                             {% endfor %}
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label for="edit-source-url">Source link <span class="label-hint">(optional)</span></label>
+                        <input type="url" id="edit-source-url" placeholder="https://…">
+                    </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -447,7 +472,7 @@
                     </div>
                 </div>
                 <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="submit" class="btn btn-primary" aria-keyshortcuts="Control+Enter">Save Changes <kbd>Ctrl+Enter</kbd></button>
                     <button type="button" class="btn btn-ghost" id="cancel-edit">Cancel</button>
                 </div>
             </form>

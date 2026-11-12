@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import uuid
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from flask import (
     Blueprint,
@@ -48,6 +49,7 @@ def _validate_mistake(data, partial=False):
         "concept",
         "question_image",
         "solution_image",
+        "source_url",
         "mistake_type",
         "why_happened",
         "how_to_avoid",
@@ -55,6 +57,21 @@ def _validate_mistake(data, partial=False):
     for field in text_fields:
         if field in data and not isinstance(data[field], str):
             return f"{field} must be text."
+    source_url = data.get("source_url", "").strip()
+    if source_url:
+        try:
+            url = urlsplit(source_url)
+            valid = (
+                url.scheme in {"http", "https"}
+                and url.hostname
+                and url.port != 0
+                and source_url.isprintable()
+                and not any(char.isspace() or char == "\\" for char in source_url)
+            )
+        except ValueError:
+            valid = False
+        if not valid:
+            return "Enter an HTTP or HTTPS source link."
     for field, label in (
         ("category", "Category"),
         ("why_happened", "Why it happened"),

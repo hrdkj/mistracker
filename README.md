@@ -21,6 +21,8 @@ Opens at [http://127.0.0.1:8111](http://127.0.0.1:8111). The SQLite database is 
 Open **Review today** to practice active mistakes that are due. Try the question,
 then reveal the solution and notes and record **Solved**, **Struggled**, or
 **Missed**. Entries without question images use their concept as a recall prompt.
+Filter the due queue by category and subtopic. **Start 5-card session** reviews
+up to five matching cards and leaves the remaining cards due.
 
 - Missed: review tomorrow.
 - Struggled: review in 3 days.
@@ -33,6 +35,9 @@ without erasing their history; deleting a mistake deletes its history too.
 The static demo supports reviews, but its changes reset on reload.
 
 Saving an entry requires a category, an explanation, and prevention notes.
+Add an optional HTTP or HTTPS source link to reopen the original problem from
+the mistakes list or after revealing a review card. Press **Ctrl+Enter** while
+in the add or edit form to save.
 Failed saves keep the form and uploaded images available for retry. Submission
 is disabled while a save or image upload is in progress.
 

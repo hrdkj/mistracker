@@ -33,7 +33,9 @@ const sandbox = {
     FormData: FormDataShim,
     crypto: { randomUUID: () => 'test-uuid-' + Math.random().toString(36).slice(2) },
     location: { pathname: '/mistracker/demo/index.html' },
-    URL: { createObjectURL: () => 'blob:demo' },
+    URL: class extends URL {
+        static createObjectURL() { return 'blob:demo'; }
+    },
     document: { addEventListener: () => {} },
 };
 sandbox.window = sandbox;
@@ -77,17 +79,22 @@ const check = (name, cond, extra) => {
     check('subtopics by category', JSON.stringify(await r.json()) === JSON.stringify(['Clustering K-Means', 'Perceptron']));
 
     // POST create
-    r = await fetchMock('/api/mistakes', { method: 'POST', body: JSON.stringify({ category: 'NewCat', subtopics: ['a', 'A', 'b'], mistake_type: 'Conceptual', why_happened: 'Lost track', how_to_avoid: 'Check each step' }) });
+    const sourceURL = 'https://example.com/assignment#rank';
+    r = await fetchMock('/api/mistakes', { method: 'POST', body: JSON.stringify({ category: 'NewCat', subtopics: ['a', 'A', 'b'], mistake_type: 'Conceptual', why_happened: 'Lost track', how_to_avoid: 'Check each step', source_url: sourceURL }) });
     const created = await r.json();
     check('POST -> 201', r.status === 201);
     check('valid type preserved', created.mistake_type === 'Conceptual');
     check('explanation preserved', created.why_happened === 'Lost track');
     check('subtopics deduped case-insens', JSON.stringify(created.subtopics) === '["a","b"]');
     check('legacy fields mirrored', created.subtopic === 'a, b' && created.topic === 'NewCat');
+    check('source link saved', created.source_url === sourceURL);
 
     // PUT update
     r = await fetchMock('/api/mistakes/' + created.id, { method: 'PUT', body: JSON.stringify({ category: 'Renamed' }) });
-    check('PUT merges', (await r.json()).category === 'Renamed');
+    const renamed = await r.json();
+    check('PUT merges', renamed.category === 'Renamed' && renamed.source_url === sourceURL);
+    r = await fetchMock('/api/mistakes/' + created.id, { method: 'PUT', body: '{"source_url":"javascript:alert(1)"}' });
+    check('unsafe source link rejected', r.status === 400);
 
     // Archive flows
     r = await fetchMock(`/api/mistakes/${created.id}/archive`, { method: 'PATCH' });

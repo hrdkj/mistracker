@@ -158,6 +158,19 @@ class AppTests(unittest.TestCase):
         self.assertEqual(response.json["category"], "Algebra")
         self.assertEqual(self.client.get("/api/topics").json, ["Algebra"])
 
+    def test_optional_source_link_can_be_updated_and_cleared(self):
+        url = "http://127.0.0.1:3000/session/1?tab=notes#problem"
+        mistake = self.add(source_url=f"  {url}  ")
+        endpoint = f"/api/mistakes/{mistake['id']}"
+        self.assertEqual(mistake["source_url"], url)
+        self.assertEqual(self.due()["mistakes"][0]["source_url"], url)
+        for invalid in (None, "javascript:alert(1)", "file:///notes.html", "https://"):
+            self.assertEqual(self.client.put(endpoint, json={"source_url": invalid}).status_code, 400)
+        self.assertEqual(
+            self.client.put(endpoint, json={"concept": "Revised"}).json["source_url"], url
+        )
+        self.assertEqual(self.client.put(endpoint, json={"source_url": ""}).json["source_url"], "")
+
     def test_upload_serve_and_delete(self):
         raw = self.models._placeholder_png(2, 2, (0, 0, 0))
         response = self.client.post(
@@ -284,7 +297,8 @@ class AppTests(unittest.TestCase):
     def test_backup_round_trip_includes_images_and_review_history(self):
         image = self.root / "images" / "example.png"
         image.write_bytes(self.models._placeholder_png(2, 2, (0, 0, 0)))
-        mistake = self.add(question_image="/api/images/example.png")
+        source_url = "https://example.com/assignment#problem-2"
+        mistake = self.add(question_image="/api/images/example.png", source_url=source_url)
         attempt = self.review(mistake).json
         content = self.backup()
         self.client.delete(f"/api/mistakes/{mistake['id']}")
@@ -293,6 +307,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(result.status_code, 200, result.json)
         self.assertTrue(image.exists())
         self.assertEqual(self.history(mistake), [attempt])
+        self.assertEqual(self.client.get(f"/api/mistakes/{mistake['id']}").json["source_url"], source_url)
         self.assertEqual(
             self.client.get(f"/api/mistakes/{replacement['id']}").status_code, 404
         )
@@ -303,7 +318,7 @@ class AppTests(unittest.TestCase):
             self.client.get(f"/api/mistakes/{replacement['id']}").status_code, 200
         )
 
-    def test_legacy_backup_gets_review_schema_without_restart(self):
+    def test_legacy_backup_gets_new_schema_without_restart(self):
         mistake = self.add()
         self.review(mistake)
         original = self.backup()
@@ -312,6 +327,7 @@ class AppTests(unittest.TestCase):
             legacy_db.write_bytes(source.read("mistracker.db"))
         with closing(sqlite3.connect(legacy_db)) as conn:
             conn.execute("DROP TABLE reviews")
+            conn.execute("ALTER TABLE mistakes DROP COLUMN source_url")
             conn.commit()
         out = io.BytesIO()
         with zipfile.ZipFile(out, "w") as archive:
@@ -322,6 +338,10 @@ class AppTests(unittest.TestCase):
             )
         self.assertEqual(self.restore(out.getvalue()).status_code, 200)
         self.assertEqual(len(self.due()["mistakes"]), 1)
+        self.assertEqual(self.due()["mistakes"][0]["source_url"], "")
+        source_url = "https://example.com/lesson"
+        result = self.client.put(f"/api/mistakes/{mistake['id']}", json={"source_url": source_url})
+        self.assertEqual(result.json["source_url"], source_url)
         self.assertEqual(self.history(mistake), [])
         self.assertEqual(self.review(mistake).status_code, 201)
 

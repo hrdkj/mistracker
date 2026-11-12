@@ -54,7 +54,10 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwM
     await page.locator('#new-category').fill('Algebra');
     await page.locator('#new-concept').fill('Matrix rank');
     await page.locator('#new-why').fill('Forgot independence');
-    await page.locator('#new-avoid').fill('Check rows first');
+    const preventionNote = 'Before computing rank\n\n- Check rows first\n- Compare x < y & y > 0\nVerify the result';
+    await page.locator('#new-avoid').fill(preventionNote);
+    const sourceURL = 'https://example.com/assignment?week=1&quiz=2#rank';
+    await page.locator('#new-source-url').fill(sourceURL);
 
     // Hold a real image upload: saving must remain blocked until its URL exists.
     let releaseUpload;
@@ -65,6 +68,7 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwM
         void processImage(new File([bytes], 'question.png', { type: 'image/png' }), 'question', false);
     }, PNG);
     await page.waitForFunction(() => document.querySelector('#add-form [type="submit"]').disabled);
+    await page.locator('#new-why').press('Control+Enter');
     await page.evaluate(() => document.getElementById('add-form').requestSubmit());
     assert.equal((await api('/api/mistakes')).length, 0);
     releaseUpload();
@@ -86,6 +90,7 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwM
         await page.waitForFunction(text => document.querySelector('#add-form .form-error').textContent.includes(text), message);
         assert.equal(await page.locator('#new-why').inputValue(), 'Forgot independence');
         assert.equal(await page.locator('#new-image').inputValue(), imageURL);
+        assert.equal(await page.locator('#new-source-url').inputValue(), sourceURL);
         assert.equal((await api('/api/mistakes')).length, 0);
         assert.equal(await page.locator('.toast-success').count(), 0);
         await page.unroute('**/api/mistakes');
@@ -101,7 +106,7 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwM
         await saveGate;
         await route.continue();
     });
-    await save.click();
+    await page.locator('#new-avoid').press('Control+Enter');
     await page.waitForFunction(() => document.getElementById('add-form').dataset.busy === 'true');
     await page.evaluate(() => document.getElementById('add-form').requestSubmit());
     releaseSave();
@@ -110,14 +115,27 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwM
     await page.unroute('**/api/mistakes');
     const mistake = (await api('/api/mistakes'))[0];
     assert.equal(mistake.question_image, imageURL);
-    pass('retry saves exactly one entry and retains uploaded image');
+    assert.equal(mistake.source_url, sourceURL);
+    assert.equal(await page.locator('#mistakes-tbody .source-link').getAttribute('href'), sourceURL);
+    const tableNote = page.locator('#mistakes-tbody [data-label="How to Avoid"] .table-note');
+    assert.deepEqual(await tableNote.locator(':scope > div').allTextContents(),
+        ['Before computing rank', '', 'Verify the result']);
+    assert.equal(await tableNote.locator('ul').count(), 1);
+    assert.deepEqual(await tableNote.locator('ul > li').allTextContents(),
+        ['Check rows first', 'Compare x < y & y > 0']);
+    assert.equal(await tableNote.evaluate(note => getComputedStyle(note).whiteSpace), 'pre-wrap');
+    pass('Ctrl+Enter saves exactly one entry with its image and source link');
 
     await page.locator('.edit-btn').first().click();
+    assert.equal(await page.locator('#edit-source-url').inputValue(), sourceURL);
+    assert.equal(await page.locator('#edit-avoid').inputValue(), preventionNote);
+    const editedURL = 'http://127.0.0.1:3000/session/2';
+    await page.locator('#edit-source-url').fill(editedURL);
     await page.locator('#edit-why').fill('Updated explanation');
     await page.route(`**/api/mistakes/${mistake.id}`, route => route.fulfill({
         status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Edit failed' })
     }));
-    await page.locator('#edit-form [type="submit"]').click();
+    await page.locator('#edit-why').press('Control+Enter');
     await page.waitForFunction(() => document.querySelector('#edit-form .form-error').textContent === 'Edit failed');
     assert.equal(await page.locator('#edit-why').inputValue(), 'Updated explanation');
     assert.ok(await page.locator('#edit-modal').isVisible());
@@ -134,6 +152,10 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwM
     assert.ok(await page.locator('#review-question').isVisible());
     await page.locator('#reveal-review').click();
     assert.equal(await page.locator('#review-why').textContent(), 'Updated explanation');
+    assert.equal(await page.locator('#review-avoid > p').textContent(), 'Before computing rank');
+    assert.deepEqual(await page.locator('#review-avoid > ul > li').allTextContents(),
+        ['Check rows first', 'Compare x < y & y > 0', 'Verify the result']);
+    assert.equal(await page.locator('#review-source').getAttribute('href'), editedURL);
     await page.screenshot({ path: path.join(os.tmpdir(), 'mistracker-review-desktop.png'), fullPage: true });
     await page.route(`**/api/mistakes/${mistake.id}/reviews`, route => {
         if (route.request().method() === 'GET') return route.continue();
@@ -169,6 +191,42 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwM
     assert.ok(!await page.locator('#review-answer').isVisible());
     assert.equal(await page.locator('#review-why').textContent(), '');
     pass('text-only cards work on mobile and next card hides the previous answer');
+
+    const targets = [];
+    for (let index = 1; index <= 6; index++) {
+        targets.push(await api('/api/mistakes', post({ category: 'MLT', subtopics: ['Regression'],
+            concept: `Regression ${index}`, why_happened: 'Skipped a step', how_to_avoid: 'Show each step' })));
+    }
+    const otherSubtopic = await api('/api/mistakes', post({ category: 'MLT', subtopics: ['Clustering'],
+        why_happened: 'Mixed rules', how_to_avoid: 'Check assumptions' }));
+    await page.locator('#refresh-reviews').click();
+    await page.locator('#review-category-filter').selectOption({ label: 'MLT' });
+    await page.locator('#review-subtopic-filter').selectOption({ label: 'Regression' });
+    assert.match(await page.locator('#review-status').textContent(), /6 due/);
+    await page.locator('#start-review-session').click();
+    for (let index = 1; index <= 5; index++) {
+        await page.waitForFunction(number => document.getElementById('review-status').textContent.includes(`Card ${number} of 5`), index);
+        assert.equal(await page.locator('#review-prompt').textContent(), `Regression ${index}`);
+        await page.locator('#reveal-review').click();
+        await page.locator('[data-outcome="missed"]').click();
+    }
+    await page.waitForFunction(() => document.getElementById('review-status').textContent.includes('Session complete. 5 of 5'));
+    assert.ok(!await page.locator('#review-card').isVisible());
+    const remaining = (await api('/api/reviews/due')).mistakes.map(item => item.id);
+    assert.deepEqual(targets.map(item => remaining.includes(item.id)), [false, false, false, false, false, true]);
+    assert.ok(remaining.includes(otherSubtopic.id));
+    await page.locator('#start-review-session').click();
+    assert.match(await page.locator('#review-status').textContent(), /Card 1 of 1/);
+    assert.equal(await page.locator('#review-prompt').textContent(), 'Regression 6');
+    pass('category and subtopic filters scope five-card sessions and leave the next card due');
+
+    await api(`/api/mistakes/${mistake.id}/archive`, { method: 'PATCH' });
+    await page.locator('[data-tab="archived-tab"]').click();
+    await page.locator('.archive-folder-header').filter({ hasText: 'Algebra' }).click();
+    const archivedBullets = page.locator('.archive-folder-table [data-label="Avoid"] ul > li');
+    assert.ok(await archivedBullets.first().isVisible());
+    assert.deepEqual(await archivedBullets.allTextContents(), ['Check rows first', 'Compare x < y & y > 0']);
+    pass('archived notes display dash-prefixed lines as bullets');
 
     // The shipped static build uses the same UI with the in-memory API.
     await page.setViewportSize({ width: 1280, height: 900 });

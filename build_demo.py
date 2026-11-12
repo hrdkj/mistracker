@@ -63,6 +63,7 @@ def build_demo_data() -> str:
                 "solution_image": demo_asset_data_url(
                     entry.get("demo_s"), fallback_s
                 ),
+                "source_url": "",
                 "mistake_type": entry["mistake_type"],
                 "why_happened": entry["why_happened"],
                 "how_to_avoid": entry["how_to_avoid"],

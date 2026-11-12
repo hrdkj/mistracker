@@ -5,6 +5,7 @@ import sqlite3
 import struct
 import uuid
 import zlib
+from contextlib import closing
 from datetime import datetime, timedelta
 
 DATA_DIR = os.environ.get("MISTRACKER_DATA_DIR") or os.path.join(
@@ -25,6 +26,7 @@ if os.path.exists(_LEGACY_DB_FILE) and not os.path.exists(DB_FILE):
 
 MISTAKE_TYPES = [
     "Conceptual",
+    "New info/detail",
     "Silly/Careless",
     "Calculation",
     "Time Pressure",
@@ -42,6 +44,7 @@ CREATE TABLE IF NOT EXISTS mistakes (
     topic         TEXT NOT NULL DEFAULT '',
     question_image TEXT NOT NULL DEFAULT '',
     solution_image TEXT NOT NULL DEFAULT '',
+    source_url    TEXT NOT NULL DEFAULT '',
     mistake_type  TEXT NOT NULL DEFAULT 'Conceptual',
     why_happened  TEXT NOT NULL DEFAULT '',
     how_to_avoid  TEXT NOT NULL DEFAULT '',
@@ -65,29 +68,29 @@ def init_db() -> None:
     """Create tables and directories if they don't exist."""
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(IMAGES_DIR, exist_ok=True)
-    conn = _get_conn()
-    conn.execute(CREATE_TABLE)
     from app.reviews import init_schema
-    init_schema(conn)
-    try:
+
+    with closing(_get_conn()) as conn, conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(CREATE_TABLE)
+        init_schema(conn)
+        upgrade_mistake_columns(conn)
         conn.execute(
-            "ALTER TABLE mistakes ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
+            "CREATE INDEX IF NOT EXISTS idx_mistakes_archived_date "
+            "ON mistakes (archived, date_added)"
         )
-    except sqlite3.OperationalError:
-        pass
-    # Secondary indexes for the read paths in get_all_mistakes(),
-    # get_all_categories(), get_all_subtopics() and get_analytics().
-    # IF NOT EXISTS keeps this idempotent on existing databases.
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_mistakes_archived_date "
-        "ON mistakes (archived, date_added)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_mistakes_category "
-        "ON mistakes (archived, category)"
-    )
-    conn.commit()
-    conn.close()
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mistakes_category "
+            "ON mistakes (archived, category)"
+        )
+
+
+def upgrade_mistake_columns(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
+    if "archived" not in columns:
+        conn.execute("ALTER TABLE mistakes ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+    if "source_url" not in columns:
+        conn.execute("ALTER TABLE mistakes ADD COLUMN source_url TEXT NOT NULL DEFAULT ''")
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict:
@@ -204,9 +207,9 @@ def add_mistake(data: dict) -> dict:
     conn.execute(
         """INSERT INTO mistakes
            (id, category, subtopics, subtopic, concept, topic,
-            question_image, solution_image, mistake_type,
+            question_image, solution_image, source_url, mistake_type,
             why_happened, how_to_avoid, date_added, date_modified)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             new_id,
             category,
@@ -216,6 +219,7 @@ def add_mistake(data: dict) -> dict:
             category,
             _normalized_text(data.get("question_image")),
             _normalized_text(data.get("solution_image")),
+            _normalized_text(data.get("source_url")),
             _safe_mistake_type(data.get("mistake_type", "Conceptual")),
             _normalized_text(data.get("why_happened")),
             _normalized_text(data.get("how_to_avoid")),
@@ -273,7 +277,7 @@ def update_mistake(mistake_id: str, data: dict) -> dict | None:
     conn.execute(
         """UPDATE mistakes SET
            category = ?, subtopics = ?, subtopic = ?, concept = ?, topic = ?,
-           question_image = ?, solution_image = ?, mistake_type = ?,
+           question_image = ?, solution_image = ?, source_url = ?, mistake_type = ?,
            why_happened = ?, how_to_avoid = ?, date_modified = ?
            WHERE id = ?""",
         (
@@ -284,6 +288,7 @@ def update_mistake(mistake_id: str, data: dict) -> dict | None:
             category,
             question_image,
             solution_image,
+            _normalized_text(data.get("source_url", existing["source_url"])),
             mistake_type,
             why_happened,
             how_to_avoid,

@@ -442,11 +442,11 @@ function renderTable() {
             <td data-label="Date">${formatDate(m.date_added)}</td>
             <td data-label="Category">${escapeHtml(m.category || m.topic || '')}</td>
             <td data-label="Subtopic">${escapeHtml(m.subtopic || '')}</td>
-            <td data-label="Question">${renderThumbnail(m.question_image, m.id, 'question')}</td>
+            <td data-label="Question">${renderThumbnail(m.question_image, m.id, 'question')}${renderSourceLink(m.source_url)}</td>
             <td data-label="Solution">${renderThumbnail(m.solution_image, m.id, 'solution')}</td>
             <td data-label="Type">${renderMistakeType(m.mistake_type)}</td>
-            <td data-label="Why It Happened">${escapeHtml(m.why_happened)}</td>
-            <td data-label="How to Avoid">${escapeHtml(m.how_to_avoid)}</td>
+            <td class="note-cell" data-label="Why It Happened"><div class="table-note">${renderTableNote(m.why_happened)}</div></td>
+            <td class="note-cell" data-label="How to Avoid"><div class="table-note">${renderTableNote(m.how_to_avoid)}</div></td>
             <td data-label="Actions">
                 <div class="action-btns">
                     <button class="card-action-btn edit-btn" data-id="${m.id}" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
@@ -481,6 +481,20 @@ function renderThumbnail(imageData, id, type) {
     }
     const src = escapeAttr(imageData);
     return `<img src="${src}" class="card-thumb" loading="lazy" data-src="${src}" alt="${escapeAttr(type)}">`;
+}
+
+function sourceHref(value) {
+    if (!value || !/^https?:\/\//i.test(value)) return '';
+    try {
+        return new URL(value).href;
+    } catch {
+        return '';
+    }
+}
+
+function renderSourceLink(value) {
+    const href = sourceHref(value);
+    return href ? `<a class="source-link" href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">Open source</a>` : '';
 }
 
 function renderMistakeType(type) {
@@ -615,11 +629,11 @@ function renderArchivedFolders() {
             row.innerHTML = `
                 <td data-label="Date">${formatDate(m.date_added)}</td>
                 <td data-label="Subtopic">${escapeHtml(m.subtopic || '')}</td>
-                <td data-label="Question">${renderThumbnail(m.question_image, m.id, 'question')}</td>
+                <td data-label="Question">${renderThumbnail(m.question_image, m.id, 'question')}${renderSourceLink(m.source_url)}</td>
                 <td data-label="Solution">${renderThumbnail(m.solution_image, m.id, 'solution')}</td>
                 <td data-label="Type">${renderMistakeType(m.mistake_type)}</td>
-                <td data-label="Why">${escapeHtml(m.why_happened)}</td>
-                <td data-label="Avoid">${escapeHtml(m.how_to_avoid)}</td>
+                <td class="note-cell" data-label="Why"><div class="table-note">${renderTableNote(m.why_happened)}</div></td>
+                <td class="note-cell" data-label="Avoid"><div class="table-note">${renderTableNote(m.how_to_avoid)}</div></td>
                 <td data-label="Actions">
                     <div class="action-btns">
                         <button class="card-action-btn unarchive-btn" data-id="${m.id}" title="Restore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></button>
@@ -739,6 +753,15 @@ function setupEventListeners() {
     archiveTopicBtn.addEventListener('click', openArchiveTopicModal);
 
 
+    for (const form of [addForm, editForm]) {
+        const submit = form.querySelector('[type="submit"]');
+        form.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' || !event.ctrlKey || event.altKey || event.shiftKey || event.metaKey || event.isComposing) return;
+            event.preventDefault();
+            if (!event.repeat && !submit.disabled) form.requestSubmit(submit);
+        });
+    }
+
     // Add form
     addForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -751,6 +774,7 @@ function setupEventListeners() {
                 category: categoryValue,
                 subtopics: subtopicList,
                 concept: document.getElementById('new-concept').value.trim(),
+                source_url: document.getElementById('new-source-url').value.trim(),
                 mistake_type: document.getElementById('new-type').value,
                 question_image: newImageInput.value,
                 solution_image: newSolutionImageInput.value,
@@ -782,6 +806,7 @@ function setupEventListeners() {
                 category: document.getElementById('edit-category').value,
                 subtopics: normalizeSubtopicsInput(document.getElementById('edit-subtopics').value),
                 concept: document.getElementById('edit-concept').value.trim(),
+                source_url: document.getElementById('edit-source-url').value.trim(),
                 mistake_type: document.getElementById('edit-type').value,
                 question_image: editImageInput.value,
                 solution_image: editSolutionImageInput.value,
@@ -1236,6 +1261,7 @@ function openEditModal(id) {
     document.getElementById('edit-category').value = m.category || m.topic || '';
     document.getElementById('edit-subtopics').value = (m.subtopics || []).join(', ') || m.subtopic || '';
     document.getElementById('edit-concept').value = m.concept || '';
+    document.getElementById('edit-source-url').value = m.source_url || '';
     document.getElementById('edit-type').value = m.mistake_type;
     document.getElementById('edit-why').value = m.why_happened;
     document.getElementById('edit-avoid').value = m.how_to_avoid;
@@ -1288,6 +1314,26 @@ function formatDate(isoString) {
     if (!isoString) return '';
     const d = new Date(isoString);
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function renderTableNote(text) {
+    if (!text) return '';
+    const bullet = /^[ \t]*-[ \t]+(\S.*)$/;
+    let html = '';
+    let inList = false;
+    for (const line of text.split(/\r\n?|\n/)) {
+        const item = line.match(bullet);
+        if (item) {
+            if (!inList) html += '<ul>';
+            html += `<li>${escapeHtml(item[1])}</li>`;
+        } else {
+            if (inList) html += '</ul>';
+            html += `<div>${escapeHtml(line) || '<br>'}</div>`;
+        }
+        inList = Boolean(item);
+    }
+    if (inList) html += '</ul>';
+    return html;
 }
 
 function escapeHtml(text) {
