@@ -143,7 +143,10 @@ async function runAction(control, action) {
     }
 }
 
+let mistakesRequestId = 0;
+
 async function loadMistakes() {
+    const requestId = ++mistakesRequestId;
     try {
         const params = new URLSearchParams();
         params.append('archived', 'false');
@@ -152,11 +155,13 @@ async function loadMistakes() {
         if (currentFilters.mistake_type) params.append('mistake_type', currentFilters.mistake_type);
 
         const result = await requestJSON(`/api/mistakes?${params}`);
+        // Ignore responses that a newer filter change has superseded.
+        if (requestId !== mistakesRequestId) return;
         mistakes = result;
         hydrateLastEntryDetailsFromMistakes();
         renderTable();
     } catch (error) {
-        showToast(error.message, 'error');
+        if (requestId === mistakesRequestId) showToast(error.message, 'error');
     }
 }
 
@@ -296,7 +301,7 @@ function renderDistribution(container, distribution) {
     }).join('');
 }
 
-async function loadSubtopics(category = '') {
+async function loadSubtopics(category = currentFilters.category) {
     try {
         subtopics = await fetchSubtopicsByCategory(category);
         renderSubtopicFilter();
@@ -509,7 +514,19 @@ function renderCategoryFilter() {
         opt.value = c; opt.textContent = c;
         filterCategory.appendChild(opt);
     });
-    if (currentFilters.category) filterCategory.value = currentFilters.category;
+    if (!currentFilters.category) return;
+    const match = categories.find(c => c.toLowerCase() === currentFilters.category.toLowerCase());
+    if (match) {
+        currentFilters.category = match;
+        filterCategory.value = match;
+        return;
+    }
+    // The filtered category no longer has active mistakes (archived, deleted,
+    // or renamed). Clear the stale filter so the table matches the dropdown.
+    currentFilters.category = '';
+    currentFilters.subtopic = '';
+    loadSubtopics();
+    loadMistakes();
 }
 
 function renderSubtopicFilter() {
@@ -519,10 +536,17 @@ function renderSubtopicFilter() {
         opt.value = s; opt.textContent = s;
         filterSubtopic.appendChild(opt);
     });
-    if (currentFilters.subtopic && subtopics.includes(currentFilters.subtopic)) {
-        filterSubtopic.value = currentFilters.subtopic;
+    const match = currentFilters.subtopic &&
+        subtopics.find(s => s.toLowerCase() === currentFilters.subtopic.toLowerCase());
+    if (match) {
+        currentFilters.subtopic = match;
+        filterSubtopic.value = match;
     } else {
         filterSubtopic.value = '';
+        if (currentFilters.subtopic) {
+            currentFilters.subtopic = '';
+            loadMistakes();
+        }
     }
 }
 
@@ -792,7 +816,7 @@ function setupEventListeners() {
             applySavedEntryDetails();
             loadMistakes();
             loadCategories();
-            loadSubtopics(document.getElementById('new-category').value);
+            loadSubtopics();
             switchTab('mistakes-tab');
         });
     });
@@ -972,13 +996,6 @@ function setupClipboardPaste() {
         el.addEventListener('dragleave', () => { el.classList.remove('active'); updatePasteHint(el, 'Ctrl+V or drag an image'); });
         el.addEventListener('drop', (e) => handleDrop(e, type, edit));
     });
-
-    // Global paste fallback
-    document.addEventListener('paste', (e) => {
-        if (document.getElementById('add-tab').classList.contains('active') && document.activeElement === pasteZone) {
-            handlePaste(e, 'question', false);
-        }
-    });
 }
 
 function updatePasteHint(zone, text) {
@@ -1048,7 +1065,10 @@ async function processImage(file, imageType, isEdit) {
     if (!file) return;
     const zone = getZoneByType(imageType, isEdit);
     const form = isEdit ? editForm : addForm;
-    if (form.dataset.busy || zone.dataset.busy) return;
+    if (form.dataset.busy || zone.dataset.busy) {
+        showPasteError(zone, 'Wait for the current save or upload to finish');
+        return;
+    }
     if (file.size > 16 * 1024 * 1024) { showPasteError(zone, 'Image too large (max 16 MB)'); return; }
 
     zone.dataset.busy = 'true';

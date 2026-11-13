@@ -194,7 +194,9 @@ def _extract_and_validate(source, stage: str) -> tuple[str, str]:
                 "SELECT outcome, reviewed_at, next_review_date, interval_days FROM reviews LIMIT 1"
             )
             models.upgrade_mistake_columns(conn)
+            models.ensure_indexes(conn)
             conn.commit()
+            conn.execute("PRAGMA journal_mode=WAL")
     except sqlite3.DatabaseError as exc:
         raise BackupError("The backup database could not be upgraded.") from exc
     return staged_db, staged_images

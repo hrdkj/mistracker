@@ -6,10 +6,10 @@ app = create_app()
 
 PORT = int(os.environ.get("PORT") or 8111)
 
-# Debug + auto-reloader on by default for `uv run python main.py`.
-# The systemd auto-start service sets MISTRACKER_DEBUG=0 so it runs as a
-# single process (~half the RAM, no reloader) instead of two.
-DEBUG = os.environ.get("MISTRACKER_DEBUG", "1").lower() not in {"0", "false", "no"}
+# Debug mode (Werkzeug debugger + auto-reloader) is opt-in: set
+# MISTRACKER_DEBUG=1 while developing. Off by default so the interactive
+# debugger is never exposed unintentionally.
+DEBUG = os.environ.get("MISTRACKER_DEBUG", "0").lower() in {"1", "true", "yes"}
 
 
 def main():

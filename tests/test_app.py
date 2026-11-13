@@ -192,6 +192,84 @@ class AppTests(unittest.TestCase):
                 self.client.post("/api/upload", json=body).status_code, 400
             )
 
+    def upload(self):
+        raw = self.models._placeholder_png(2, 2, (0, 0, 0))
+        response = self.client.post(
+            "/api/upload", data={"file": (io.BytesIO(raw), "test.png")}
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.json["url"]
+
+    def test_replaced_and_cleared_images_are_deleted(self):
+        first, second, shared = self.upload(), self.upload(), self.upload()
+        mistake = self.add(question_image=first, solution_image=shared)
+        self.add(question_image=shared)
+        endpoint = f"/api/mistakes/{mistake['id']}"
+        self.client.put(endpoint, json={"question_image": second})
+        self.assertEqual(self.client.get(first).status_code, 404)
+        self.client.get(second).close()
+        self.client.put(endpoint, json={"question_image": "", "solution_image": ""})
+        self.assertEqual(self.client.get(second).status_code, 404)
+        # Still referenced by the other mistake.
+        with self.client.get(shared) as served:
+            self.assertEqual(served.status_code, 200)
+
+    def test_startup_sweeps_old_orphan_uploads_only(self):
+        kept, fresh, orphan = self.upload(), self.upload(), self.upload()
+        self.add(question_image=kept)
+        images = Path(self.models.IMAGES_DIR)
+        old = 1_000_000_000
+        for url in (kept, orphan):
+            os.utime(images / url.rsplit("/", 1)[1], (old, old))
+        self.assertEqual(self.models.cleanup_orphan_images(), 1)
+        self.assertEqual(
+            sorted(p.name for p in images.iterdir()),
+            sorted(u.rsplit("/", 1)[1] for u in (kept, fresh)),
+        )
+
+    def test_cross_site_writes_are_rejected(self):
+        mistake = self.add()
+        endpoint = f"/api/mistakes/{mistake['id']}"
+        blocked = [
+            {"Sec-Fetch-Site": "cross-site"},
+            {"Origin": "https://evil.example"},
+            {"Origin": "null"},
+        ]
+        for headers in blocked:
+            self.assertEqual(
+                self.restore_with(headers).status_code, 403, headers
+            )
+            self.assertEqual(
+                self.client.delete(endpoint, headers=headers).status_code, 403
+            )
+        self.assertEqual(
+            self.client.get("/api/mistakes", headers=blocked[0]).status_code, 200
+        )
+        same_origin = {"Origin": "http://localhost", "Sec-Fetch-Site": "same-origin"}
+        self.assertEqual(
+            self.client.put(endpoint, json={"concept": "x"}, headers=same_origin).status_code,
+            200,
+        )
+
+    def restore_with(self, headers):
+        return self.client.post(
+            "/api/restore",
+            data={"backup": (io.BytesIO(b"not a zip"), "backup.zip")},
+            headers=headers,
+        )
+
+    def test_subtopics_and_analytics_ignore_case(self):
+        self.add(subtopics=["Rank"])
+        self.add(category="math", subtopics=["rank"])
+        self.assertEqual(self.client.get("/api/subtopics").json, ["rank"])
+        analytics = self.client.get("/api/analytics").json
+        self.assertEqual(sum(analytics["category_distribution"].values()), 2)
+        self.assertEqual(len(analytics["category_distribution"]), 1)
+        self.assertEqual(list(analytics["subtopic_distribution"].values()), [2])
+
+    def test_empty_analytics_has_no_most_common_type(self):
+        self.assertIsNone(self.client.get("/api/analytics").json["most_common_type"])
+
     def test_upload_size_limit(self):
         response = self.client.post(
             "/api/upload",
