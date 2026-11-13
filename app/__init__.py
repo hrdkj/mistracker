@@ -1,4 +1,10 @@
+from urllib.parse import urlsplit
+
 from flask import Flask, jsonify, request
+
+
+def _forbidden():
+    return jsonify({"error": "Cross-site requests are not allowed."}), 403
 
 
 def create_app():
@@ -13,6 +19,19 @@ def create_app():
         if request.path.startswith("/api/"):
             return jsonify({"error": "The uploaded file is too large."}), 413
         return "The uploaded file is too large.", 413
+
+    @app.before_request
+    def reject_cross_site_writes():
+        # Multipart POSTs (upload, restore) are "simple" CORS requests, so any
+        # website could otherwise send them to this local server.
+        if request.method in {"GET", "HEAD", "OPTIONS"}:
+            return None
+        if request.headers.get("Sec-Fetch-Site") == "cross-site":
+            return _forbidden()
+        origin = request.headers.get("Origin")
+        if origin and urlsplit(origin).netloc != request.host:
+            return _forbidden()
+        return None
 
     # Initialize database and directories
     from app.models import init_db

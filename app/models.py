@@ -3,6 +3,7 @@ import json
 import os
 import sqlite3
 import struct
+import time
 import uuid
 import zlib
 from contextlib import closing
@@ -15,14 +16,29 @@ DB_FILE = os.path.join(DATA_DIR, "mistracker.db")
 # Legacy DB filename (misspelling) — migrated automatically if present and new file absent.
 _LEGACY_DB_FILE = os.path.join(DATA_DIR, "mistraker.db")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
+IMAGE_URL_PREFIX = "/api/images/"
+# Unreferenced uploads younger than this may belong to a form still open in
+# the browser, so startup cleanup leaves them alone.
+ORPHAN_IMAGE_MIN_AGE_SECONDS = 24 * 60 * 60
 
-# Migrate legacy DB file name on import (preserves user data after rename).
-if os.path.exists(_LEGACY_DB_FILE) and not os.path.exists(DB_FILE):
+
+def _migrate_legacy_db() -> str:
+    """Rename the legacy DB (and its WAL sidecars) to the current name."""
+    if not os.path.exists(_LEGACY_DB_FILE) or os.path.exists(DB_FILE):
+        return DB_FILE
     try:
         os.rename(_LEGACY_DB_FILE, DB_FILE)
     except OSError:
         # Fall back to using the legacy file if rename fails (e.g. different mount).
-        DB_FILE = _LEGACY_DB_FILE
+        return _LEGACY_DB_FILE
+    # Un-checkpointed writes live in the -wal file; it must follow the DB.
+    for suffix in ("-wal", "-shm"):
+        if os.path.exists(_LEGACY_DB_FILE + suffix):
+            os.replace(_LEGACY_DB_FILE + suffix, DB_FILE + suffix)
+    return DB_FILE
+
+
+DB_FILE = _migrate_legacy_db()
 
 MISTAKE_TYPES = [
     "Conceptual",
@@ -56,11 +72,14 @@ CREATE TABLE IF NOT EXISTS mistakes (
 
 
 def _get_conn() -> sqlite3.Connection:
-    """Get a SQLite connection with row factory."""
+    """Get a SQLite connection with row factory.
+
+    WAL mode is persistent in the database file, so it is set once in
+    init_db() rather than on every connection.
+    """
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
@@ -70,19 +89,15 @@ def init_db() -> None:
     os.makedirs(IMAGES_DIR, exist_ok=True)
     from app.reviews import init_schema
 
-    with closing(_get_conn()) as conn, conn:
-        conn.execute("BEGIN IMMEDIATE")
-        conn.execute(CREATE_TABLE)
-        init_schema(conn)
-        upgrade_mistake_columns(conn)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_mistakes_archived_date "
-            "ON mistakes (archived, date_added)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_mistakes_category "
-            "ON mistakes (archived, category)"
-        )
+    with closing(_get_conn()) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(CREATE_TABLE)
+            init_schema(conn)
+            upgrade_mistake_columns(conn)
+            ensure_indexes(conn)
+    cleanup_orphan_images()
 
 
 def upgrade_mistake_columns(conn: sqlite3.Connection) -> None:
@@ -93,15 +108,30 @@ def upgrade_mistake_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE mistakes ADD COLUMN source_url TEXT NOT NULL DEFAULT ''")
 
 
+def ensure_indexes(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mistakes_archived_date "
+        "ON mistakes (archived, date_added)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mistakes_category "
+        "ON mistakes (archived, category)"
+    )
+
+
 def _row_to_dict(row: sqlite3.Row) -> dict:
     """Convert a sqlite3.Row to a normalized dict."""
     d = dict(row)
-    # Parse subtopics JSON string back to list
-    try:
-        d["subtopics"] = json.loads(d.get("subtopics", "[]"))
-    except (json.JSONDecodeError, TypeError):
-        d["subtopics"] = []
+    d["subtopics"] = _load_subtopics(d.get("subtopics"))
     return d
+
+
+def _load_subtopics(raw) -> list[str]:
+    try:
+        value = json.loads(raw or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return [s for s in value if isinstance(s, str) and s] if isinstance(value, list) else []
 
 
 def _normalized_text(value: str | None) -> str:
@@ -137,6 +167,59 @@ def _parse_subtopics(value) -> list[str]:
     return result
 
 
+def _image_filename(url: str | None) -> str | None:
+    """Return the stored filename for a local image URL, else None."""
+    if not url or not url.startswith(IMAGE_URL_PREFIX):
+        return None
+    name = url[len(IMAGE_URL_PREFIX):]
+    if not name or "/" in name or "\\" in name or name in {".", ".."}:
+        return None
+    return name
+
+
+def _delete_unreferenced_images(conn: sqlite3.Connection, urls) -> None:
+    """Delete image files for URLs that no mistake row references any more."""
+    for url in set(urls):
+        name = _image_filename(url)
+        if name is None:
+            continue
+        in_use = conn.execute(
+            "SELECT 1 FROM mistakes WHERE question_image = ? OR solution_image = ? LIMIT 1",
+            (url, url),
+        ).fetchone()
+        if in_use:
+            continue
+        try:
+            os.remove(os.path.join(IMAGES_DIR, name))
+        except FileNotFoundError:
+            pass
+
+
+def cleanup_orphan_images(min_age_seconds: float = ORPHAN_IMAGE_MIN_AGE_SECONDS) -> int:
+    """Remove old uploads that no mistake references (cleared or abandoned)."""
+    if not os.path.isdir(IMAGES_DIR):
+        return 0
+    with closing(_get_conn()) as conn:
+        referenced = {
+            name
+            for row in conn.execute("SELECT question_image, solution_image FROM mistakes")
+            for name in map(_image_filename, row)
+            if name
+        }
+    cutoff = time.time() - min_age_seconds
+    removed = 0
+    for entry in os.scandir(IMAGES_DIR):
+        if entry.name in referenced or not entry.is_file(follow_symlinks=False):
+            continue
+        try:
+            if entry.stat().st_mtime <= cutoff:
+                os.remove(entry.path)
+                removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def get_all_mistakes(
     category: str | None = None,
     subtopic: str | None = None,
@@ -147,7 +230,6 @@ def get_all_mistakes(
 
     archived: None = all, False = active only, True = archived only
     """
-    conn = _get_conn()
     query = "SELECT * FROM mistakes WHERE 1=1"
     params: list = []
 
@@ -165,8 +247,8 @@ def get_all_mistakes(
 
     query += " ORDER BY date_added DESC"
 
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    with closing(_get_conn()) as conn:
+        rows = conn.execute(query, params).fetchall()
 
     results = [_row_to_dict(r) for r in rows]
 
@@ -182,12 +264,9 @@ def get_all_mistakes(
 
 
 def get_mistake_by_id(mistake_id: str) -> dict | None:
-    conn = _get_conn()
-    row = conn.execute("SELECT * FROM mistakes WHERE id = ?", (mistake_id,)).fetchone()
-    conn.close()
-    if row:
-        return _row_to_dict(row)
-    return None
+    with closing(_get_conn()) as conn:
+        row = conn.execute("SELECT * FROM mistakes WHERE id = ?", (mistake_id,)).fetchone()
+    return _row_to_dict(row) if row else None
 
 
 def add_mistake(data: dict) -> dict:
@@ -200,150 +279,133 @@ def add_mistake(data: dict) -> dict:
     if not subtopics:
         subtopics = _parse_subtopics(data.get("subtopic"))
 
-    new_id = str(uuid.uuid4())
-    concept = _normalized_text(data.get("concept"))
-
-    conn = _get_conn()
-    conn.execute(
-        """INSERT INTO mistakes
-           (id, category, subtopics, subtopic, concept, topic,
-            question_image, solution_image, source_url, mistake_type,
-            why_happened, how_to_avoid, date_added, date_modified)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            new_id,
-            category,
-            json.dumps(subtopics),
-            ", ".join(subtopics),
-            concept,
-            category,
-            _normalized_text(data.get("question_image")),
-            _normalized_text(data.get("solution_image")),
-            _normalized_text(data.get("source_url")),
-            _safe_mistake_type(data.get("mistake_type", "Conceptual")),
-            _normalized_text(data.get("why_happened")),
-            _normalized_text(data.get("how_to_avoid")),
-            now,
-            now,
-        ),
-    )
-    conn.commit()
-    conn.close()
-
-    return get_mistake_by_id(new_id)
+    with closing(_get_conn()) as conn, conn:
+        row = conn.execute(
+            """INSERT INTO mistakes
+               (id, category, subtopics, subtopic, concept, topic,
+                question_image, solution_image, source_url, mistake_type,
+                why_happened, how_to_avoid, date_added, date_modified)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               RETURNING *""",
+            (
+                str(uuid.uuid4()),
+                category,
+                json.dumps(subtopics),
+                ", ".join(subtopics),
+                _normalized_text(data.get("concept")),
+                category,
+                _normalized_text(data.get("question_image")),
+                _normalized_text(data.get("solution_image")),
+                _normalized_text(data.get("source_url")),
+                _safe_mistake_type(data.get("mistake_type", "Conceptual")),
+                _normalized_text(data.get("why_happened")),
+                _normalized_text(data.get("how_to_avoid")),
+                now,
+                now,
+            ),
+        ).fetchone()
+    return _row_to_dict(row)
 
 
 def update_mistake(mistake_id: str, data: dict) -> dict | None:
-    existing = get_mistake_by_id(mistake_id)
-    if not existing:
-        return None
+    with closing(_get_conn()) as conn:
+        with conn:
+            # Hold the write lock across read-modify-write.
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM mistakes WHERE id = ?", (mistake_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            existing = _row_to_dict(row)
 
-    # Build updated fields
-    if "category" in data:
-        category = _normalized_text(data["category"])
-    elif "topic" in data:
-        category = _normalized_text(data["topic"])
-    else:
-        category = existing["category"]
+            if "category" in data:
+                category = _normalized_text(data["category"])
+            elif "topic" in data:
+                category = _normalized_text(data["topic"])
+            else:
+                category = existing["category"]
 
-    if "subtopics" in data:
-        subtopics = _parse_subtopics(data["subtopics"])
-    elif "subtopic" in data:
-        subtopics = _parse_subtopics(data["subtopic"])
-    else:
-        subtopics = existing["subtopics"]
+            if "subtopics" in data:
+                subtopics = _parse_subtopics(data["subtopics"])
+            elif "subtopic" in data:
+                subtopics = _parse_subtopics(data["subtopic"])
+            else:
+                subtopics = existing["subtopics"]
 
-    concept = (
-        _normalized_text(data["concept"]) if "concept" in data else existing["concept"]
-    )
-    question_image = data.get("question_image", existing["question_image"])
-    solution_image = data.get("solution_image", existing["solution_image"])
-    if "mistake_type" in data:
-        mistake_type = _safe_mistake_type(data["mistake_type"], existing["mistake_type"])
-    else:
-        mistake_type = existing["mistake_type"]
-    why_happened = (
-        _normalized_text(data["why_happened"])
-        if "why_happened" in data
-        else existing["why_happened"]
-    )
-    how_to_avoid = (
-        _normalized_text(data["how_to_avoid"])
-        if "how_to_avoid" in data
-        else existing["how_to_avoid"]
-    )
+            def text(field):
+                return _normalized_text(data[field]) if field in data else existing[field]
 
-    conn = _get_conn()
-    conn.execute(
-        """UPDATE mistakes SET
-           category = ?, subtopics = ?, subtopic = ?, concept = ?, topic = ?,
-           question_image = ?, solution_image = ?, source_url = ?, mistake_type = ?,
-           why_happened = ?, how_to_avoid = ?, date_modified = ?
-           WHERE id = ?""",
-        (
-            category,
-            json.dumps(subtopics),
-            ", ".join(subtopics),
-            concept,
-            category,
-            question_image,
-            solution_image,
-            _normalized_text(data.get("source_url", existing["source_url"])),
-            mistake_type,
-            why_happened,
-            how_to_avoid,
-            datetime.now().isoformat(),
-            mistake_id,
-        ),
-    )
-    conn.commit()
-    conn.close()
-    return get_mistake_by_id(mistake_id)
+            if "mistake_type" in data:
+                mistake_type = _safe_mistake_type(
+                    data["mistake_type"], existing["mistake_type"]
+                )
+            else:
+                mistake_type = existing["mistake_type"]
 
+            updated = conn.execute(
+                """UPDATE mistakes SET
+                   category = ?, subtopics = ?, subtopic = ?, concept = ?, topic = ?,
+                   question_image = ?, solution_image = ?, source_url = ?,
+                   mistake_type = ?, why_happened = ?, how_to_avoid = ?,
+                   date_modified = ?
+                   WHERE id = ?
+                   RETURNING *""",
+                (
+                    category,
+                    json.dumps(subtopics),
+                    ", ".join(subtopics),
+                    text("concept"),
+                    category,
+                    text("question_image"),
+                    text("solution_image"),
+                    text("source_url"),
+                    mistake_type,
+                    text("why_happened"),
+                    text("how_to_avoid"),
+                    datetime.now().isoformat(),
+                    mistake_id,
+                ),
+            ).fetchone()
 
-def _delete_image_file(url: str) -> None:
-    """Delete an image file from disk given its serving URL."""
-    if not url or not url.startswith("/api/images/"):
-        return
-    filename = url.split("/")[-1]
-    filepath = os.path.join(IMAGES_DIR, filename)
-    if os.path.exists(filepath):
-        os.remove(filepath)
+        replaced = [
+            existing[field]
+            for field in ("question_image", "solution_image")
+            if existing[field] and existing[field] != updated[field]
+        ]
+        _delete_unreferenced_images(conn, replaced)
+    return _row_to_dict(updated)
 
 
 def delete_mistake(mistake_id: str) -> bool:
-    existing = get_mistake_by_id(mistake_id)
-    if not existing:
-        return False
-
-    # Delete associated images
-    _delete_image_file(existing.get("question_image", ""))
-    _delete_image_file(existing.get("solution_image", ""))
-
-    conn = _get_conn()
-    conn.execute("DELETE FROM mistakes WHERE id = ?", (mistake_id,))
-    conn.commit()
-    conn.close()
+    with closing(_get_conn()) as conn:
+        with conn:
+            row = conn.execute(
+                "DELETE FROM mistakes WHERE id = ? RETURNING question_image, solution_image",
+                (mistake_id,),
+            ).fetchone()
+        if row is None:
+            return False
+        # Remove files only after the row delete has committed.
+        _delete_unreferenced_images(conn, [u for u in row if u])
     return True
 
 
 def get_all_categories(archived: bool | None = None) -> list[str]:
-    conn = _get_conn()
     query = "SELECT DISTINCT category FROM mistakes WHERE category != ''"
     params: list = []
     if archived is not None:
         query += " AND archived = ?"
         params.append(1 if archived else 0)
     query += " ORDER BY category"
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    with closing(_get_conn()) as conn:
+        rows = conn.execute(query, params).fetchall()
     return [r["category"] for r in rows]
 
 
 def get_all_subtopics(
     category: str | None = None, archived: bool | None = None
 ) -> list[str]:
-    conn = _get_conn()
     query = "SELECT subtopics FROM mistakes WHERE 1=1"
     params: list = []
     if category:
@@ -352,119 +414,91 @@ def get_all_subtopics(
     if archived is not None:
         query += " AND archived = ?"
         params.append(1 if archived else 0)
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    query += " ORDER BY date_added DESC"
+    with closing(_get_conn()) as conn:
+        rows = conn.execute(query, params).fetchall()
 
-    all_subtopics = set()
+    # Case-insensitive de-duplication; filtering is case-insensitive too.
+    # The most recent spelling wins.
+    by_key: dict[str, str] = {}
     for row in rows:
-        try:
-            subs = json.loads(row["subtopics"])
-            for s in subs:
-                if s:
-                    all_subtopics.add(s)
-        except (json.JSONDecodeError, TypeError):
-            pass
+        for s in _load_subtopics(row["subtopics"]):
+            by_key.setdefault(s.lower(), s)
+    return sorted(by_key.values(), key=str.lower)
 
-    return sorted(all_subtopics)
+
+def _set_archived(mistake_id: str, archived: bool) -> dict | None:
+    with closing(_get_conn()) as conn, conn:
+        row = conn.execute(
+            "UPDATE mistakes SET archived = ?, date_modified = ? WHERE id = ? RETURNING *",
+            (1 if archived else 0, datetime.now().isoformat(), mistake_id),
+        ).fetchone()
+    return _row_to_dict(row) if row else None
 
 
 def archive_mistake(mistake_id: str) -> dict | None:
-    existing = get_mistake_by_id(mistake_id)
-    if not existing:
-        return None
-    conn = _get_conn()
-    conn.execute(
-        "UPDATE mistakes SET archived = 1, date_modified = ? WHERE id = ?",
-        (datetime.now().isoformat(), mistake_id),
-    )
-    conn.commit()
-    conn.close()
-    return get_mistake_by_id(mistake_id)
+    return _set_archived(mistake_id, True)
 
 
 def unarchive_mistake(mistake_id: str) -> dict | None:
-    existing = get_mistake_by_id(mistake_id)
-    if not existing:
-        return None
-    conn = _get_conn()
-    conn.execute(
-        "UPDATE mistakes SET archived = 0, date_modified = ? WHERE id = ?",
-        (datetime.now().isoformat(), mistake_id),
-    )
-    conn.commit()
-    conn.close()
-    return get_mistake_by_id(mistake_id)
+    return _set_archived(mistake_id, False)
+
+
+def _set_category_archived(category: str, archived: bool) -> int:
+    with closing(_get_conn()) as conn, conn:
+        cursor = conn.execute(
+            "UPDATE mistakes SET archived = ?, date_modified = ? "
+            "WHERE LOWER(category) = LOWER(?) AND archived = ?",
+            (1 if archived else 0, datetime.now().isoformat(), category, 0 if archived else 1),
+        )
+        return cursor.rowcount
 
 
 def archive_category(category: str) -> int:
-    conn = _get_conn()
-    now = datetime.now().isoformat()
-    cursor = conn.execute(
-        "UPDATE mistakes SET archived = 1, date_modified = ? WHERE LOWER(category) = LOWER(?) AND archived = 0",
-        (now, category),
-    )
-    conn.commit()
-    count = cursor.rowcount
-    conn.close()
-    return count
+    return _set_category_archived(category, True)
 
 
 def unarchive_category(category: str) -> int:
-    conn = _get_conn()
-    now = datetime.now().isoformat()
-    cursor = conn.execute(
-        "UPDATE mistakes SET archived = 0, date_modified = ? WHERE LOWER(category) = LOWER(?) AND archived = 1",
-        (now, category),
-    )
-    conn.commit()
-    count = cursor.rowcount
-    conn.close()
-    return count
+    return _set_category_archived(category, False)
 
 
 def get_analytics() -> dict:
-    conn = _get_conn()
-    rows = conn.execute("SELECT * FROM mistakes WHERE archived = 0").fetchall()
-    conn.close()
-
-    mistakes = [_row_to_dict(r) for r in rows]
+    # Only the columns needed for counting — skip notes and image URLs.
+    with closing(_get_conn()) as conn:
+        rows = conn.execute(
+            "SELECT category, mistake_type, subtopics FROM mistakes WHERE archived = 0"
+        ).fetchall()
 
     type_counts = {mt: 0 for mt in MISTAKE_TYPES}
-    category_counts = {}
-    subtopic_counts = {}
+    # Counted case-insensitively; the first spelling seen is displayed.
+    category_counts: dict[str, list] = {}
+    subtopic_counts: dict[tuple[str, str], list] = {}
 
-    for m in mistakes:
-        mt = m.get("mistake_type", "Conceptual")
-        if mt in type_counts:
-            type_counts[mt] += 1
-        else:
-            type_counts[mt] = 1
+    for row in rows:
+        mt = row["mistake_type"] or "Conceptual"
+        type_counts[mt] = type_counts.get(mt, 0) + 1
 
-        category = m.get("category", "").strip() or "Uncategorized"
-        category_counts[category] = category_counts.get(category, 0) + 1
+        category = (row["category"] or "").strip() or "Uncategorized"
+        entry = category_counts.setdefault(category.lower(), [category, 0])
+        entry[1] += 1
+        category = entry[0]
 
-        subs = m.get("subtopics", [])
-        if subs:
-            for sub in subs:
-                key = f"{category} - {sub}"
-                subtopic_counts[key] = subtopic_counts.get(key, 0) + 1
-        else:
-            key = f"{category} - Unspecified"
-            subtopic_counts[key] = subtopic_counts.get(key, 0) + 1
+        for sub in _load_subtopics(row["subtopics"]) or ["Unspecified"]:
+            key = (category.lower(), sub.lower())
+            sub_entry = subtopic_counts.setdefault(key, [f"{category} - {sub}", 0])
+            sub_entry[1] += 1
 
-    sorted_categories = sorted(
-        category_counts.items(), key=lambda x: x[1], reverse=True
-    )
-    sorted_subtopics = sorted(subtopic_counts.items(), key=lambda x: x[1], reverse=True)
+    def top(counts):
+        ranked = sorted(counts.values(), key=lambda x: x[1], reverse=True)
+        return {label: count for label, count in ranked[:10]}
 
+    most_common = max(type_counts.items(), key=lambda x: x[1])
     return {
-        "total_mistakes": len(mistakes),
+        "total_mistakes": len(rows),
         "type_distribution": type_counts,
-        "category_distribution": dict(sorted_categories[:10]),
-        "subtopic_distribution": dict(sorted_subtopics[:10]),
-        "most_common_type": max(type_counts.items(), key=lambda x: x[1])[0]
-        if type_counts
-        else None,
+        "category_distribution": top(category_counts),
+        "subtopic_distribution": top(subtopic_counts),
+        "most_common_type": most_common[0] if most_common[1] else None,
     }
 
 

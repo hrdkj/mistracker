@@ -9,6 +9,9 @@ Local Flask web app for tracking study mistakes. Single-package Python app using
 uv run python main.py
 # → Serves on http://127.0.0.1:8111 (PORT env var overrides)
 
+# Dev mode with debugger + auto-reload
+MISTRACKER_DEBUG=1 uv run python main.py
+
 # Seed sample data into an empty DB
 SEED_DEMO=1 uv run python main.py
 
@@ -20,7 +23,7 @@ node demo/test_demo_mode.js   # static-demo test harness (needs Node)
 uvx ruff check --no-cache --isolated .
 ```
 
-There are no pytest/typecheck/CI configs.
+Tests: `uv run python -m unittest discover -s tests -v`. There are no pytest/typecheck/CI configs.
 
 ## Architecture
 
@@ -40,3 +43,5 @@ There are no pytest/typecheck/CI configs.
 - SQLite uses WAL journal mode (`PRAGMA journal_mode=WAL`)
 - `data/*.db` and `data/images/` are gitignored; DB is created on first run by `init_db()`
 - `/api/topics` is a backward-compatible alias for `/api/categories`
+- Writes (POST/PUT/PATCH/DELETE) from other origins are rejected with 403 (`Sec-Fetch-Site`/`Origin` check in `app/__init__.py`)
+- Replaced/deleted images are removed when no row references them; unreferenced uploads older than 24h are swept on startup
